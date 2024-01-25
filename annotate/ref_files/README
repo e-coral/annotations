@@ -1,0 +1,90 @@
+Emmon Croot, 11th Jan 2024
+
+@ The telomeres bed file was obtained from
+https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/annotation/chm13v2.0_telomere.bed,
+via the T2T consortium github (https://github.com/marbl/chm13) (2024-01-10), and edited to only contain terminal
+telomeres (chr3 and chr11 ITS deleted). Then, the script get_non-telomere_regions.py was run to find the inverse of the
+regions contained within the telomeres bed file (i.e. the start and end of the non-telomere chromosomes), which are
+more useful for these analyses.
+
+@ The genes file was obtained from ftp://ftp.ccb.jhu.edu/pub/data/T2T-CHM13/chm13v2.0_RefSeq_Liftoff_v4.gff3 (2023-08-04),
+originally for eccDNA annotations. get_just_genes.py was run to keep only genes info (thereby reducing the size
+of the file to be more manageable for these analyses)
+
+@ The secondary genes file /ref_files/CAT_liftoff_from_table_browser.csv was downloaded from the UCSC table browser on
+Jan15th, using the following settings:
+
+    assembly: T2T/hs1
+    group: genes and gene predictions
+    track: CAT/LiftOff genes
+    table: hub_567047_catLiftOffGenesV1
+    region: genome
+    output format: selected fields
+    output field separator: csv
+    file type: plain text
+
+    selected fields:
+    chrom	Reference sequence chromosome or scaffold
+    chromStart	Start position in chromosome
+    chromEnd	End position in chromosome
+    name	Name
+    name2	Gene name
+
+    columns were renamed to merge well with other dfs
+    seqid	start	end	name	Gene
+
+    This files at least contains some AC.... AP.... genes, allowing more of the names in the input file to be annotated.
+
+@ the censat file was obtained from the T2T github on Jan23rd,
+https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/annotation/chm13v2.0_censat_v2.0.bed
+and bedtools merge was used to generate single centromere regions for each chr
+# bedtools merge -i chm13v2.0_censat_v2.0.bed > censat_merged.bed
+chrY has loads of entries and didn't merge, so checked in __ and added manually
+
+^ not really used though, in favour of...
+
+@ the ideogram file was downloaded from the UCSC Table Browser (24th Jan 2024) to cytobands.tsv, using the settings:
+
+    assembly: T2T/hs1
+    group: Mapping and Sequencing
+    track: cytobands (Ideogram)
+    table: hub_3671779_cytoBandIdeo
+    region: genome
+    output format: all fields
+    output field separator: tsv
+    file type: plain text
+
+and centromeres were extracted using get_centromeres.py
+
+
+
+########################################################################################################################
+In brief, the script gene_tel_distance performs the following:
+
+1. reads in
+    * the file containing the lists of genes
+    * the edited files described above
+2. extracts gene names (using the 'gene_name' attribute) from the attributes column of the refseq/liftoff genes file
+3. merges the input files into a large dataset with relevant data associations
+4. calculates the gene length (gene end position - gene start position)
+5. calculates the distances between both ends of the gene and both telomeres, and takes the minimum of these 4 distances
+6. adds the chr:1-9 format locations to the data
+7. discards irrelevant data
+8. identifies duplicate genes, and outputs these to a separate file for reference
+9. identifies genes that were not found in the refseq/liftoff file, and outputs these to a separate file for reference
+10. outputs a csv file containing all the genes, their chr, start, end, length, distance to telomere and formatted loc
+11. also outputs an excel file containing the same information for each of the original gene lists (one list per sheet)
+
+example output:
+Gene,Chr,Start,End,Gene_length,Distance_to_telomere,Gene_loc
+TENT2,chr5,80096704,80172520,75816,80094304,chr5:80096704-80172520
+FMNL1-DT,chr17,46044557,46075484,30927,38198316,chr17:46044557-46075484
+
+#################################
+sorting out the additional ~700 genes that aren't in chm13v2.0_RefSeq_Liftoff_v4.gff3
+
+
+
+
+
+
