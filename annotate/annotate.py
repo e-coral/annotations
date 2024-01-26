@@ -158,12 +158,47 @@ def add_position_annotations(genes, annotations):
     # no_alt_transcripts.to_csv(os.path.join(outdir, 'no_alt_transcripts.csv'), index=False)
     # pos_df.to_csv(os.path.join(outdir, 'final_pos_df.csv'))
 
+    relevant_entries = []
+
     grouped = pos_df.groupby('orig_gene')
     for group in grouped:
         # group[0] is orig_gene value (str), group[1] is a df containing all the entries for that gene
         # print(type(group[0]))
         if len(group[1]) == 1:
-            print(group[1])
+            # print(group[1])
+            relevant_entries.append(group[1])
+        else:
+            # count the number of unique gene/gene_name entries
+            same_gene_name = group[1].gene_name.nunique()
+            same_gene = group[1].gene.nunique()
+
+            if same_gene_name == 1:
+                # print(f"unique g n")
+                plain_gene = group[1][group[1].orig_gene == group[1].gene]
+                # print(f"unique gene name, length: {len(plain_gene)}")
+
+            elif same_gene == 1:
+                # print(f"unique g")
+                plain_gene = group[1][group[1].orig_gene == group[1].gene_name]
+                # print(f"unique g, len(plain_gene) = {len(plain_gene)}")
+
+            else:
+                # if it's just one gene and NaN in a column, then trim off the names and add them as for above
+                same_gene_name = group[1].gene_name.dropna().nunique()
+                same_gene = group[1].gene.dropna().nunique()
+                if not same_gene == 1 or same_gene_name == 1:
+                    print(f"non-na unique gene names in the group for {group[0]}")
+                    group[1].to_csv(os.path.join(outdir, f"{group[0]}un-unique.csv"))
+                    plain_gene = pandas.DataFrame({})
+                else:
+                    pass
+
+            if not plain_gene.empty:
+                relevant_entries.append(plain_gene)
+
+    rel_ents_df = pandas.concat(relevant_entries, ignore_index=True)
+
+    rel_ents_df.to_csv(os.path.join(outdir, 'relevant_entries.csv'), index=False)
         # print(len(group[1]))
         # print(group[2])
         # print(len(group[1]))
