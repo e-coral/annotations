@@ -52,7 +52,7 @@ def get_gene_annotations():
     extra_anns_df = pandas.read_csv(os.path.join(refs_dir, extras))
 
     # extract the gene name from the attributes string
-    gene_anns_df["gene_name"] = gene_anns_df ["attributes"].str.extract(r'.*;gene_name=(.*?);.*').fillna('')
+    gene_anns_df["gene_name"] = gene_anns_df["attributes"].str.extract(r'.*;gene_name=(.*?);.*').fillna('')
     gene_anns_df["gene"] = gene_anns_df["attributes"].str.extract(r'.*;gene=(.*?);.*').fillna('')
 
     # subset the dfs to the same, relevant columns
@@ -63,18 +63,6 @@ def get_gene_annotations():
     gene_anns = pandas.concat([gene_anns_df, extra_anns_df])
 
     return gene_anns
-
-
-def get_all_anns():
-    """
-    Get all annotation types
-    :return: dfs containing relevant annotations and associated information
-    """
-    genes = get_gene_annotations()
-    tel_boundaries = get_telomere_boundaries()
-    centromeres = get_centromere_positions()
-
-    return genes, tel_boundaries, centromeres
 
 
 def convert_ensembl_ids(genes_df):
@@ -99,7 +87,103 @@ def convert_ensembl_ids(genes_df):
     return genes_df
 
 
-def set_gene_name_for_annotation()
+def report_duplicated_genes(genes_df, outfile):
+    """
+    identify and report duplicated gene names and their locations
+    :param genes_df: the df containing gene names and positions from the gene annotation resources
+    :param outfile: path to output file for the duplicated genes
+    :return: an output file with duplicated genes
+    """
+    duplicaterows = pandas.concat(g for _, g in genes_df.groupby("gene_name") if len(g) > 1)
+    duplicaterows.to_csv(outfile, index=False)
+
+
+def report_genes_with_no_annotations(genes_df, outfile):
+    """
+    identify and report genes in the input file that were not found in the annotations files
+    :param genes_df: the df containing gene names and positions from the gene annotation resources
+    :param outfile: path to output file for the genes with no available position information
+    :return: output file
+    """
+    no_ann = genes_df[genes_df["seqid"].isna()]
+    no_ann = no_ann.dropna(axis=1)
+    no_ann.to_csv(outfile, index=False)
+
+
+def add_position_annotations(genes, annotations):
+    """
+    Merge the input genes and annotations to add the positions to the input genes, and ensure correct formatting of
+    positions
+    :param genes: input df of gene names
+    :param annotations: df of gene annotations
+    :return: df containing input genes and their positions
+    """
+    # merge the dfs of gene names and gene annotations on each of the potential gene name columns
+    # print(genes.columns)
+    # print(annotations.columns)
+
+    # df1 will contain most entries
+    pos_df1 = pandas.merge(genes, annotations, left_on=['orig_gene'], right_on=['gene'], how='left')
+
+    # alt_gene only contains a few translated ensgIDs, so df2 and df3 will be very small
+    pos_df2 = pandas.merge(genes, annotations, left_on=['alt_gene'], right_on=['gene'], how='left')
+
+    # remove rows where gene name and gene are the same to prevent doubling up the merge work
+    annotations = annotations[annotations.gene != annotations.gene_name]
+
+    # alt_gene only contains a few translated ensgIDs, so df2 and df3 will be very small
+    pos_df3 = pandas.merge(genes, annotations, left_on=['alt_gene'], right_on=['gene_name'], how='left')
+
+    # df4 would have largely contained duplicates of df1, because gene and gene name are often the same
+    pos_df4 = pandas.merge(genes, annotations, left_on=['orig_gene'], right_on=['gene_name'], how='left')
+
+    # drop all na rows from the largely empty/duplicated dfs, but not from df1 to maintain input genes
+    pos_df2.dropna(subset=['seqid', 'start'], inplace=True)
+    pos_df3.dropna(subset=['seqid', 'start'], inplace=True)
+    pos_df4.dropna(subset=['seqid', 'start'], inplace=True)
+
+    pos_df4.to_csv(os.path.join(outdir, 'pos_df4.csv'), index=False)
+
+    # concatenate the dfs
+    pos_df = pandas.concat([pos_df1, pos_df2, pos_df3, pos_df4], ignore_index=True, sort=False)
+    # print(pos_df.seqid.isna().sum())  # only 206 not found now
+
+    # remove the duplicate rows
+    pos_df.drop_duplicates(inplace=True)
+    # print(pos_df.seqid.isna().sum())  # only 206 not found now
+
+    # no_alt_transcripts = pos_df[pos_df.gene_name == pos_df.gene]
+    # no_alt_transcripts = no_alt_transcripts[no_alt_transcripts.gene_name == no_alt_transcripts.gene]
+
+    # no_alt_transcripts.to_csv(os.path.join(outdir, 'no_alt_transcripts.csv'), index=False)
+    # pos_df.to_csv(os.path.join(outdir, 'final_pos_df.csv'))
+
+    grouped = pos_df.groupby('orig_gene')
+    for group in grouped:
+        # group[0] is orig_gene value (str), group[1] is a df containing all the entries for that gene
+        # print(type(group[0]))
+        if len(group[1]) == 1:
+            print(group[1])
+        # print(len(group[1]))
+        # print(group[2])
+        # print(len(group[1]))
+        # exit()
+
+    return pos_df
+
+
+def add_tel_lengths(genes, tels):
+    """
+    Merge the genes and positions with the telomere boundary positions
+    :param genes: df containing input genes and their positions
+    :param tels: df of telomere boundary positions
+    :return:
+    """
+
+
+def set_gene_name_for_annotation():
+    pass
+
 
 def input_file_to_dataframe():
     """
@@ -110,7 +194,6 @@ def input_file_to_dataframe():
     # read the files in, and add column names for ensembl genes
     in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
 
-
     # convert the excel file values into a single, unique list of gene names
     unique_genes = list(set([y for x in in_genes.values.tolist() for y in x if pandas.notna(y)]))
     # print(len(unique_genes))
@@ -119,8 +202,13 @@ def input_file_to_dataframe():
     genes_df = pandas.DataFrame(unique_genes, columns=['orig_gene'])
     genes_df = genes_df.map(lambda x: x.strip() if isinstance(x, str) else x)
 
-
     return genes_df
+
+
+
+
+
+
 
 
 #
@@ -256,24 +344,6 @@ def input_file_to_dataframe():
 #     # print(len(s))
 #     # list_genes = pandas.merge(s, no_na, how='left')
 #     # print(list_genes)
-
-
-def report_duplicated_genes(genes_df):
-    """
-
-    :param genes_df: the df containing gene names and positions
-    :return:
-    """
-def main():
-    initial_df = input_file_to_dataframe()
-    converted_ensgs = convert_ensembl_ids(initial_df)
-    # anns = get_all_anns()
-    print(converted_ensgs.head(10))
-    converted_ensgs.to_csv(os.path.join(outdir, "converted_ensgs.csv"), index=False)
-
-
-if __name__ == '__main__':
-    main()
 
 # start = ann_tels.loc[ann_tels['Chr'] == 'chr1', 'Start'].values[0]
 # end = ann_tels
