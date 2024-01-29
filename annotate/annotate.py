@@ -1,6 +1,5 @@
 import os
 import pandas
-import numpy
 from pathlib import Path
 
 # initialise relevant paths
@@ -22,18 +21,33 @@ def get_telomere_boundaries():
     :return: df of values from telomere boundaries file
     """
     ann_tels = pandas.read_csv(os.path.join(refs_dir, nontels_file), sep='\t')
-    # no editing required, because the file is very minimal
+
+    # convert all positions to int type to allow relevant operations and removal of trailing .0
+    ann_tels = ann_tels.astype({"Start": int, "End": int})
+
     return ann_tels
 
 
 def get_centromere_positions():
     """
-    Read in the centromere regions file (csv), generated from the cytobands ideogram file by _____
+    Read in the centromere regions file (csv), generated from the cytobands ideogram file by get_centromeres.py
+    Parse the file to get the centre of the centromere for each chromosome
     column headers = chrom,chromStart,chromEnd,name,gieStain,ChrArm
     :return: df of values from centromeres file
     """
     centromeres = pandas.read_csv(os.path.join(refs_dir, centromeres_file))
     # not yet sure what is useful, so TODO: parse file to get useful values
+
+    # subset the df to only the p arm, because there is a p and q entry for each chromosome
+    centromeres = centromeres[centromeres['ChrArm'] == "p"]
+
+    # geta df of just 'centromere position' (as the end of the first centromere section) for each chromosome
+    centromeres = centromeres[['chrom', 'chromEnd']]
+    centromeres.columns = ["seqid", "Centromere"]
+
+    # convert position to int type to allow relevant operations and removal of trailing .0
+    centromeres = centromeres.astype({"Centromere": int})
+
     return centromeres
 
 
@@ -45,7 +59,7 @@ def get_gene_annotations():
         extras_df: fuller CAT/Liftoff file (csv), which contains some of the AC... AP... genes missing from genes_df
         column headers = seqid,start,end,name,Gene
 
-    :return:
+    :return: concatenated data frame containing all the gene annotations
     """
     # read the files into dfs
     gene_anns_df = pandas.read_csv(os.path.join(refs_dir, genes_file))
@@ -110,18 +124,34 @@ def report_genes_with_no_annotations(genes_df, outfile):
     no_ann.to_csv(outfile, index=False)
 
 
-def add_position_annotations(genes, annotations):
+def find_unique_genes_in_column(genes):
+    """
+    find the unique gene names in a given column
+    :param Pandas.Series genes: df column of gene names
+    :return: list of unique gene names
+    """
+    # remove nan values
+    no_nan = genes.dropna()
+
+    # de-duplicate
+    unique = list(set(list(no_nan)))
+
+    # remove empty strings
+    if "" in unique:
+        unique.remove("")
+
+    return unique
+
+
+def add_all_positions(genes, annotations):
     """
     Merge the input genes and annotations to add the positions to the input genes, and ensure correct formatting of
     positions
     :param genes: input df of gene names
     :param annotations: df of gene annotations
-    :return: df containing input genes and their positions
+    :return: df containing input genes and their positions, including all variants of gene names
     """
     # merge the dfs of gene names and gene annotations on each of the potential gene name columns
-    # print(genes.columns)
-    # print(annotations.columns)
-
     # df1 will contain most entries
     pos_df1 = pandas.merge(genes, annotations, left_on=['orig_gene'], right_on=['gene'], how='left')
 
@@ -148,50 +178,71 @@ def add_position_annotations(genes, annotations):
     pos_df = pandas.concat([pos_df1, pos_df2, pos_df3, pos_df4], ignore_index=True, sort=False)
     # print(pos_df.seqid.isna().sum())  # only 206 not found now
 
-    # remove the duplicate rows
-    pos_df.drop_duplicates(inplace=True)
-    # print(pos_df.seqid.isna().sum())  # only 206 not found now
+    return pos_df
 
-    # no_alt_transcripts = pos_df[pos_df.gene_name == pos_df.gene]
-    # no_alt_transcripts = no_alt_transcripts[no_alt_transcripts.gene_name == no_alt_transcripts.gene]
 
-    # no_alt_transcripts.to_csv(os.path.join(outdir, 'no_alt_transcripts.csv'), index=False)
-    # pos_df.to_csv(os.path.join(outdir, 'final_pos_df.csv'))
+def get_plain_gene(df, col_name):
+    """
+    Get a relevant row from the df of gene and position(s)
+    :param Pandas.DataFrame df: df of positions for a single gene
+    :param str col_name: "gene_name" or "gene"
+    :return: single-row df of gene and position
+    """
+    # if an alternative name was found, use it
+    if not df.alt_gene.isnull().all():
+        plain_gene = df[df.alt_gene == df[col_name]]
 
+    else:
+        plain_gene = df[df.orig_gene == df[col_name]]
+
+    if plain_gene.empty:
+        plain_gene = df
+
+    return plain_gene
+
+
+def remove_additional_copies(pos_df):
+    """
+    Remove duplicates and additional copies of gene positions from the df
+    :param pos_df:
+    :return: clean df of genes and positions
+    """
+    # initialise the list of dfs of relevant entries
     relevant_entries = []
 
+    # remove duplicates
+    pos_df.drop_duplicates(inplace=True)
+
+    # split the df by original gene name, to determine if they are associated with multiple entries
     grouped = pos_df.groupby('orig_gene')
-    for group in grouped:
-        # group[0] is orig_gene value (str), group[1] is a df containing all the entries for that gene
-        # print(type(group[0]))
+    for group in grouped:  # group[0] = orig_gene value (str), group[1] = df containing all the entries for that gene
+        # if there's only one entry for the gene, add it to the final df
         if len(group[1]) == 1:
-            # print(group[1])
             relevant_entries.append(group[1])
+        # if there's more than one entry, check, de-duplicate, add relevant entries to the final df
         else:
-            # count the number of unique gene/gene_name entries
-            same_gene_name = group[1].gene_name.nunique()
-            same_gene = group[1].gene.nunique()
+            # count the number of unique gene/gene_name entries (excluding empty/NaN values)
+            unique_gene_name = find_unique_genes_in_column(group[1].gene_name)
+            unique_gene = find_unique_genes_in_column(group[1].gene)
 
-            if same_gene_name == 1:
-                # print(f"unique g n")
-                plain_gene = group[1][group[1].orig_gene == group[1].gene]
-                # print(f"unique gene name, length: {len(plain_gene)}")
+            # if there's only one unique name in one of the columns, then test whether there's a single value in the
+            # other column that exactly matches the gene name (orig or alt).
+            # If so, add that single row. Else, add all rows.
+            if len(unique_gene_name) == 1:
+                plain_gene = get_plain_gene(group[1], "gene")
 
-            elif same_gene == 1:
-                # print(f"unique g")
-                plain_gene = group[1][group[1].orig_gene == group[1].gene_name]
-                # print(f"unique g, len(plain_gene) = {len(plain_gene)}")
+            elif len(unique_gene) == 1:
+                plain_gene = get_plain_gene(group[1], "gene_name")
 
             else:
-                # if it's just one gene and NaN in a column, then trim off the names and add them as for above
-                same_gene_name = group[1].gene_name.dropna().nunique()
-                same_gene = group[1].gene.dropna().nunique()
-                if not same_gene == 1 or same_gene_name == 1:
+                plain_gene = pandas.DataFrame({})
+                if len(unique_gene_name) > 1 and len(unique_gene) > 1:
                     print(f"non-na unique gene names in the group for {group[0]}")
-                    group[1].to_csv(os.path.join(outdir, f"{group[0]}un-unique.csv"))
-                    plain_gene = pandas.DataFrame({})
+                    group[1].to_csv(os.path.join(outdir, f"{group[0]}-non-unique.csv"))
                 else:
-                    pass
+                    print(f"The gene names column contained {len(unique_gene_name)} unique entries,"
+                          f"and the gene column contained {len(unique_gene)} entries")
+                    group[1].to_csv(os.path.join(outdir, f"{group[0]}-multiple_entries.csv"))
 
             if not plain_gene.empty:
                 relevant_entries.append(plain_gene)
@@ -199,43 +250,178 @@ def add_position_annotations(genes, annotations):
     rel_ents_df = pandas.concat(relevant_entries, ignore_index=True)
 
     rel_ents_df.to_csv(os.path.join(outdir, 'relevant_entries.csv'), index=False)
-        # print(len(group[1]))
-        # print(group[2])
-        # print(len(group[1]))
-        # exit()
 
-    return pos_df
+    return rel_ents_df
 
 
-def add_tel_lengths(genes, tels):
+def add_position_annotations(genes, annotations):
+    """
+    Merge the input genes and annotations to add the positions to the input genes, and ensure correct formatting of
+    positions
+    :param genes: input df of gene names
+    :param annotations: df of gene annotations
+    :return: df containing input genes and their positions
+    """
+    pos_df = add_all_positions(genes, annotations)
+
+    relevant_entries = remove_additional_copies(pos_df)
+
+    return relevant_entries
+
+
+def add_tel_positions(genes):
     """
     Merge the genes and positions with the telomere boundary positions
     :param genes: df containing input genes and their positions
     :param tels: df of telomere boundary positions
-    :return:
+    :return: merged df, containing genes, gene positions, and telomere boundary positions
     """
+    tels = get_telomere_boundaries()  # no trailing .0
+    tels_added = pandas.merge(genes, tels, left_on=['seqid'], right_on=['Chr'], how='left')  # trailing .0 returns
+
+    # print(tels_added.columns)
+    return tels_added
 
 
-def set_gene_name_for_annotation():
-    pass
+def add_cent_positions(genes):
+    """
+    Merge the genes and positions with the centromere positions
+    :param genes: df of genes and their positions
+    :return: merged df, containing genes, gene positions, and centromere positions
+    """
+    cents = get_centromere_positions()
+    cents_added = pandas.merge(genes, cents, on=['seqid'], how='left')
+    # print(cents_added.columns)
+    return cents_added
+
+
+def calculate_gene_lengths(df):
+    """
+    Calculate the lengths of the genes by end position - start position
+    :param df: the dataframe containing genes and their positions
+    :return: the dataframe with added gene lengths
+    """
+    df['gene_length'] = df['end'] - df['start']
+    return df
+
+
+def calculate_distances_to_telomeres(df):
+    """
+    Calculate the distances between genes and the telomere on the same chromosome arm
+    :param df: the dataframe containing the gene info
+    :return: df containing telomere positions and distances between genes and telomere boundaries
+    """
+    # temporarily remove na values to allow successful conversion for calculations
+    no_na_df = df.dropna(subset=['seqid'])
+
+    # add the required telomere and centromere positions
+    no_na_df = add_tel_positions(no_na_df)
+    no_na_df = add_cent_positions(no_na_df)
+
+    # temporarily remove na values to allow successful conversion for calculations
+    na_cents = no_na_df[no_na_df['Centromere'].isna()]
+    no_na_df = no_na_df.dropna(subset=['Centromere'])
+
+    # generate a df of the genes for which no annotations were found
+    not_annotated = pandas.concat([df[df['seqid'].isna()], na_cents])
+
+    # convert all positions to int type to allow relevant operations and removal of trailing .0
+    no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int,
+                                "gene_length": int, "Centromere": int})
+
+    # if the gene is on the p arm, calculate the distance to the p telomere
+    no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), "g-t_distance"] = no_na_df["start"] - no_na_df["Start"]
+    no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), "g-t_distance"] = no_na_df["End"] - no_na_df["end"]
+
+    # convert the integers to strings to prevent trailing .0s reappearing after NaN values are added back in
+    no_na_df = no_na_df.astype({"g-t_distance": int})
+    no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "gene_length": str,
+                                "Centromere": str, "g-t_distance": str})
+
+    # add the removed rows back in
+    df = pandas.concat([no_na_df, not_annotated])
+    # df.to_csv(os.path.join(outdir, "mostly_annotated.csv"), index=False)
+
+    return df
+
+
+def add_gene_location(df):
+    """
+    Adds a column containing gene location in chrX:123-456 format
+    :param df: df of position-annotated genes
+    :return: the same df with an additional column containing the formatted location of the gene
+    """
+    df['full_gene_loc'] = df.agg(lambda x: f"{x['seqid']}:{x['start']}-{x['end']}", axis=1)
+    return df
+
+
+def reformat_for_output(df):
+    """
+    organise and rename the columns of the annotated df
+    :param df: df of genes and annotations
+    :return: reformatted df
+    """
+    # keep only relevant info
+    df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
+             'gene_length', "g-t_distance", 'full_gene_loc']]
+
+    # rename columns
+    df.columns = ['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start',
+                  'End', 'Gene_length', "Distance_to_telomere", 'Gene_loc']
+
+    return df
+
+
+def output_full_csv(df):
+    """
+    output the df as a single csv file
+    :param df: df of genes and annotations
+    :return: output file
+    """
+    # output the df to csv
+    df.to_csv(os.path.join(outdir, 'full_gene_distance_output.csv'), index=False)
+
+
+def recreate_multisheet_excel_doc(df):
+    """
+    organise and rename the columns of the annotated df, and output as a single csv file
+    :param df: df of genes and annotations
+    :return: output file
+    """
+    # read the file in
+    in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
+
+    with pandas.ExcelWriter(os.path.join(outdir, "original_sheets_plus_distances.xlsx")) as writer:
+        for _, s in in_genes.items():
+            s = s.dropna()
+            s_df = pandas.DataFrame(s.values, columns=['Orig_gene'])
+            tmp_df = pandas.merge(s_df, df, how='left', on='Orig_gene')
+            # print(tmp_df.columns)
+
+            # reorder again
+            tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End', 'Gene_length', 'Distance_to_telomere', 'Gene_loc']]
+
+            # print(tmp_df.head())
+            tmp_df.to_excel(writer, sheet_name=s.name, index=False)
 
 
 def input_file_to_dataframe():
     """
     Read in the input file and convert it into a df
 
-    :return:
+    :return: df containing input file gene names
     """
-    # read the files in, and add column names for ensembl genes
+    # read the file in, and add column names for ensembl genes
     in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
 
     # convert the excel file values into a single, unique list of gene names
-    unique_genes = list(set([y for x in in_genes.values.tolist() for y in x if pandas.notna(y)]))
-    # print(len(unique_genes))
+    unique_genes = list(set([y.strip() for x in in_genes.values.tolist() for y in x if pandas.notna(y)]))
 
     # use the unique genes to initialise a dataframe for output, and strip spaces from the gene names just in case
     genes_df = pandas.DataFrame(unique_genes, columns=['orig_gene'])
-    genes_df = genes_df.map(lambda x: x.strip() if isinstance(x, str) else x)
+
+    # no longer required: strip on y above does the same
+    # genes_df = genes_df.map(lambda x: x.strip() if isinstance(x, str) else x)
 
     return genes_df
 
