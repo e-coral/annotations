@@ -372,17 +372,17 @@ def reformat_for_output(df):
     return df
 
 
-def output_full_csv(df):
+def output_full_csv(df, outname):
     """
     output the df as a single csv file
     :param df: df of genes and annotations
     :return: output file
     """
     # output the df to csv
-    df.to_csv(os.path.join(outdir, 'full_gene_distance_output.csv'), index=False)
+    df.to_csv(os.path.join(outdir, outname), index=False)
 
 
-def recreate_multisheet_excel_doc(df):
+def recreate_multisheet_excel_doc(df, outname):
     """
     organise and rename the columns of the annotated df, and output as a single csv file
     :param df: df of genes and annotations
@@ -391,7 +391,7 @@ def recreate_multisheet_excel_doc(df):
     # read the file in
     in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
 
-    with pandas.ExcelWriter(os.path.join(outdir, "original_sheets_plus_distances.xlsx")) as writer:
+    with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
         for _, s in in_genes.items():
             s = s.dropna()
             s_df = pandas.DataFrame(s.values, columns=['Orig_gene'])
@@ -405,6 +405,35 @@ def recreate_multisheet_excel_doc(df):
             tmp_df.to_excel(writer, sheet_name=s.name, index=False)
 
 
+def recreate_manually_updated_excel_doc(df, outname):
+    """
+    organise and rename the columns of the annotated df, and output as a single csv file
+    :param df: df of genes and annotations
+    :return: output file
+    """
+    # read the file in
+    # in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
+    in_genes = pandas.read_excel('path_to/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
+
+    with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
+        for sname, s in in_genes.items():
+            if not s.empty:
+                if "Gene" in s.columns:
+                    s_df = s[["Gene"]]
+                else:
+                    s_df = s[["Orig_Gene"]]
+                s_df = s_df.dropna()
+                s_df.columns = ["Orig_gene"]
+                tmp_df = pandas.merge(s_df, df, how='left', on='Orig_gene')
+                # print(tmp_df.columns)
+
+                # reorder again
+                tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End', 'Gene_length', 'Distance_to_telomere', 'Gene_loc']]
+
+                # print(tmp_df.head())
+                tmp_df.to_excel(writer, sheet_name=sname, index=False)
+
+
 def input_file_to_dataframe():
     """
     Read in the input file and convert it into a df
@@ -413,6 +442,8 @@ def input_file_to_dataframe():
     """
     # read the file in, and add column names for ensembl genes
     in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
+
+    # print(in_genes)
 
     # convert the excel file values into a single, unique list of gene names
     unique_genes = list(set([y.strip() for x in in_genes.values.tolist() for y in x if pandas.notna(y)]))
