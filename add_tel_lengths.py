@@ -26,7 +26,7 @@ def get_genes_from_multiple_sheets():
     :return: single-column df of all gene names
     """
     genes = []
-    sheets = pandas.read_excel('path_to/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
+    sheets = pandas.read_excel('C:/Users/ec339/Downloads/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
     for sheetname, df in sheets.items():
         if "Orig_Gene" in df.columns:
             genes.append(df['Orig_Gene'])
@@ -50,8 +50,8 @@ def get_genes_from_multiple_sheets():
 
 
 def main():
-    # initial_df = annotate.input_file_to_dataframe()
-    initial_df = get_genes_from_multiple_sheets()
+    initial_df = annotate.input_file_to_dataframe()
+    # initial_df = get_genes_from_multiple_sheets()
     # print(f"initial df: {len(initial_df)}")
     converted_ensgs = annotate.convert_ensembl_ids(initial_df)
     # print(converted_ensgs.head(10))

@@ -329,6 +329,9 @@ def calculate_distances_to_telomeres(df):
     no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int,
                                 "gene_length": int, "Centromere": int})
 
+    # print(no_na_df.head())
+    # print(no_na_df.columns)
+
     # if the gene is on the p arm, calculate the distance to the p telomere
     no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), "g-t_distance"] = no_na_df["start"] - no_na_df["Start"]
     no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), "g-t_distance"] = no_na_df["End"] - no_na_df["end"]
@@ -413,15 +416,17 @@ def recreate_manually_updated_excel_doc(df, outname):
     """
     # read the file in
     # in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
-    in_genes = pandas.read_excel('path_to/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
+    in_genes = pandas.read_excel('C:/Users/ec339/Downloads/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
 
     with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
         for sname, s in in_genes.items():
-            if not s.empty:
-                if "Gene" in s.columns:
-                    s_df = s[["Gene"]]
-                else:
-                    s_df = s[["Orig_Gene"]]
+            if not s.empty and not sname == "Mean gene lengths":
+                # print(sname, s.columns)
+                # if "Gene" in s.columns:
+                #     s_df = s[["Gene"]]
+                # else:
+                #     s_df = s[["Orig_Gene"]]
+                s_df = s[["Gene"]]
                 s_df = s_df.dropna()
                 s_df.columns = ["Orig_gene"]
                 tmp_df = pandas.merge(s_df, df, how='left', on='Orig_gene')
