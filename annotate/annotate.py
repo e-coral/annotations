@@ -1,6 +1,8 @@
 import os
 import pandas
 from pathlib import Path
+from ncls import NCLS
+import re
 
 # initialise relevant paths
 refs_dir = (Path(__file__).parent / 'ref_files').resolve()
@@ -12,6 +14,10 @@ extras = 'CAT_liftoff_from_table_browser.csv'
 nontels_file = 'non-telomere_regions.bed'
 centromeres_file = 'centromeres.csv'
 ensembl_genes = 'ensembl_IDs_to_gene_names.csv'
+
+# for region annotations, in addition to genes_file above
+reps_file = 'chm13v2.0_rmsk.bed'
+fs_file = 'all_fragile_sites_positions.tsv'
 
 
 def get_telomere_boundaries():
@@ -53,7 +59,7 @@ def get_centromere_positions():
 
 def get_gene_annotations():
     """
-    Read in the files relevant to gene annotations:
+    Read in the files relevant to gene position annotations:
         genes_df: just the genes from the chm13v2.0_RefSeq_Liftoff.csv, from UCSC
         column headers = '',seqid,source,type,start,end,score,strand,phase,attributes
         extras_df: fuller CAT/Liftoff file (csv), which contains some of the AC... AP... genes missing from genes_df
@@ -77,6 +83,38 @@ def get_gene_annotations():
     gene_anns = pandas.concat([gene_anns_df, extra_anns_df])
 
     return gene_anns
+
+
+def get_genes_df():
+    """
+    read the genes file into a relevant df
+    :return: df of gene annotations
+    """
+    genes_df = pandas.read_csv(os.path.join(refs_dir, genes_file))
+    genes_df = calculate_gene_lengths(genes_df)
+
+    return genes_df.astype({'gene_length': str})
+
+
+def get_fs_df():
+    """
+    read the fragile sites file into a relevant df
+    :return: df of fragile site annotations
+    """
+    fs_df = pandas.read_csv(os.path.join(refs_dir, fs_file), sep='\t', header=0)
+    return fs_df
+
+
+def get_reps_df():
+    """
+    read the reps file into a relevant df
+    :return: df of reps annotations
+    """
+    reps_df = pandas.read_csv(os.path.join(refs_dir, reps_file), sep='\t',
+                              names=["chrom", "start", "end", "repeats", "score", "strand", "thickStart", "thickEnd",
+                                     "reserved", "blockCount", "blockSizes", "blockStarts", "id", "description"])
+
+    return reps_df
 
 
 def convert_ensembl_ids(genes_df):
@@ -295,6 +333,251 @@ def add_cent_positions(genes):
     return cents_added
 
 
+def get_regions_per_chr(df):
+    """
+    to find genes etc. that overlap with the regions of interest, the regions must be split by chromosome
+    to allow for number overlap searches
+    :param df: df of the input file
+    :return: dict with chromosomes as keys and the rest of the df values as values
+    """
+    if "seqid" in df.columns:
+        regions_by_chr = {k: v for k, v in df.groupby(['seqid'])}
+    elif "chr" in df.columns:
+        regions_by_chr = {k: v for k, v in df.groupby(['chr'])}
+    elif "chrom" in df.columns:
+        regions_by_chr = {k: v for k, v in df.groupby(['chrom'])}
+    else:
+        exit(f"unable to find chromosome in the columns:\n{df.columns}")
+
+    return regions_by_chr
+
+
+def find_reps_overlaps(chrom, pos, reps, reps_regions, reps_df):
+    """
+    find positions of variant junctions that overlap with repeats regions
+    (similar to methods for censat and fsites, but each data structure requires its own specific df access command)
+    :param chrom: chromosome number of a variant
+    :param pos: position of the junction of a variant
+    :param list reps: list of annotated variants to be added to
+    :return: list of variant junction-overlapping repeats regions for annotation
+    """
+    # initialise list
+    rep = []
+
+    try:
+        # use the ncls find_overlap method to check whether the var positions overlap with repeat regions
+        reps_overlaps = list(reps_regions[chrom].find_overlap(pos, pos + 1))
+        # if there are any overlaps,
+        # then for each overlap in the list, use the index of the region to identify the relevant annotation
+        if reps_overlaps:
+            for item in reps_overlaps:  # usually only 1 pos-annotation overlap, but it's possible for more
+                # use the index to find the relevant annotation(s), and add them to the list for the function
+                rep.append(reps_df.iloc[item[2]].repeats)
+
+    except KeyError:
+        print(f"No repeats annotations available for {chrom}.")
+
+    # join the function list (even if empty) into a comma-separated string and add it to the annotations list
+    reps.append(", ".join(rep))
+
+    return reps
+
+
+def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df):
+    """
+    find positions of variant junctions that overlap with fragile sites regions
+    (similar to methods for censat and reps, but each data structure requires its own specific df access command)
+    :param chrom: chromosome number of a variant
+    :param pos: position of the junction of a variant
+    :param list f_sites: list of annotated variants to be added to
+    :return: list of variant junction-overlapping fragile sites regions for annotation
+    """
+    # initialise list
+    fs = []
+
+    try:
+        # use the ncls find_overlap method to check whether the var positions overlap with repeat regions
+        fs_overlaps = list(fs_regions[chrom].find_overlap(pos, pos + 1))
+        # if there are any overlaps,
+        # then for each overlap in the list, use the index of the region to identify the relevant annotation
+        if fs_overlaps:
+            for item in fs_overlaps:  # usually only 1 pos-annotation overlap, but it's possible for more
+                # use the index to find the relevant annotation(s), and add them to the list for the function
+                fs.append(fs_df.iloc[item[2]].fragile_site)
+
+    except KeyError:
+        exit(f"No fragile sites annotations available for {chrom}.")
+
+    # join the function list (even if empty) into a comma-separated string and add it to the annotations list
+    f_sites.append(", ".join(fs))
+
+    return f_sites
+
+
+def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes, exons):
+    """
+    find positions of variant junctions that overlap with genes regions
+    :param chrom: chromosome number of a variant
+    :param pos: position of the junction of a variant
+    :param list gene_names: list of gene name annotations to be added to
+    :param list gene_sizes: list of gene size annotations to be added to
+    :param list exons: list of exon label annotations to be added to
+    :return: list of variant junction-overlapping fragile sites regions for annotation
+    """
+    print(type(gene_names))
+    exon = False
+    gene_length = []
+    gene_name = []
+
+    try:
+        genes_overlaps = list(gene_regions[chrom].find_overlap(pos, pos + 1))
+        if genes_overlaps:
+            for item in genes_overlaps:
+                relevant_data = gene_df.iloc[item[2]]
+
+                # if the type of the annotation is a gene, then get the gene name and size
+                if relevant_data.type == "gene":
+                    gene_length.append(relevant_data.gene_length)
+                    # extract the gene name from the attributes field
+                    atts = relevant_data.attributes
+                    if match := re.search(r'.*;gene_name=(.*?);.*', atts):
+                        gene_name.append(match.group(1))
+                    else:
+                        gene_name.append("")
+
+                # if the variant overlaps with any exon entries, set exon = True
+                if "exon" in relevant_data.type:
+                    exon = True
+
+    except KeyError:
+        exit(f"No gene annotations available for {chrom}.")
+
+    gene_sizes.append(", ".join(gene_length))
+    gene_names.append(", ".join(gene_name))
+    if exon:
+        exons.append("exon")
+    else:
+        exons.append("")
+
+    return gene_names, gene_sizes, exons
+
+
+def add_annotation_column(df, data_list, column_name):
+    """
+    validate the length of the data to be added, and add it
+    :param pandas.DataFrame df: the by-chromosome subset of the dysgu results df to be modified
+    :param list data_list: list of new information to add
+    :param str column_name: name for the new column
+    :return pandas.DataFrame: edited df
+    """
+    # if the list isn't empty, and is the length of the df, then add it to the df as a column
+    if data_list:
+        if len(df) == len(data_list):
+            df[column_name] = data_list
+        else:
+            # if the lengths differ, something has gone wrong
+            print(f"The length of the annotations list for '{column_name}' does not equal the length "
+                              f"of the variants csv.")
+            print(f"Continuing without '{column_name}' annotations")
+            df[column_name] = ""
+    # if the list is empty (e.g. chrM), just add an empty column
+    else:
+        df[column_name] = ""
+
+    return df
+
+
+def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_df, fs_regions, fs_df):
+    """"
+    annotate the regions with the features that overlap with it
+    # based on eccDNA pipeline.pipelines.annotate_dysgu_ouptut
+    :param regions: dict of the df split by chromosome
+    :param rep_regions: repeats regions dict
+    :param rep_df: df of rep regions
+    :param gene_regions: gene regions dict
+    :param gene_df: df of gene regions
+    :param fs_regions: fs regions dict
+    :param fs_df: df of fs regions
+    :return: annotations within the dict  # TODO: check this is right
+    """
+    for chrom, v in regions.items():
+        # initialise the lists of annotations
+        repeats = []
+        f_sites = []
+        genes = []
+        gene_lengths = []
+        exons = []
+
+        for i, r in v.iterrows():  # i = df index (int), r = df row
+            # get the start position for the region
+            start_pos = int(r['start'])
+            repeats = find_reps_overlaps(chrom, start_pos, repeats, rep_regions, rep_df)
+            f_sites = find_fs_overlaps(chrom, start_pos, f_sites, fs_regions, fs_df)
+            genes = find_gene_overlaps(chrom, start_pos, genes, gene_regions, gene_df, gene_lengths, exons)
+
+        v = add_annotation_column(v, repeats, "repeats")
+        v = add_annotation_column(v, f_sites, "fragile_sites")
+        v = add_annotation_column(v, genes, "genes")
+
+    final_df = pandas.concat(regions, ignore_index=True)
+
+    return final_df
+
+
+def get_annotation_regions(df):
+    """
+    get the NCLS for the regions relating to the annotations
+    :param pandas.DataFrame df: annotation data df
+    :return: dict of NCLS for the annotation type, for each chromosome
+    """
+    # initialise dict for region NCLS
+    regions = {}
+
+    # group the df by chromosome
+    grouped_df = get_regions_per_chr(df)
+
+    # add the regions to the regions dict
+    for k, v in grouped_df.items():
+        regions[k] = NCLS(v.start.values, v.end.values, v.index.values)
+
+    return regions
+
+
+def make_annotation_ncls(reps_df, genes_df, fs_df):
+    """
+    create the NCLS objects for annotations
+    :return: the NCLS objects for annotations
+    """
+
+    reps_regions = get_annotation_regions(reps_df)
+    genes_regions = get_annotation_regions(genes_df)
+    fs_regions = get_annotation_regions(fs_df)
+
+    return reps_regions, genes_regions, fs_regions
+
+
+def annotate_overlaps(df):
+    """
+    find all the overlaps between the regions of interest and features of interest
+    :param df: df derived from input
+    :return: same df containing annotations
+    """
+    reps_df = get_reps_df()
+    genes_df = get_genes_df()
+    fs_df = get_fs_df()
+
+    # create the NCLSs for the repeats, genes and fragile sites
+    reps_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, genes_df, fs_df)
+
+    # create the NCLS for the regions of interest
+    regions = get_regions_per_chr(df)
+
+    # find the overlaps between the features and regions of interest
+    anns = find_overlapping_features(regions, reps_regions, reps_df, genes_regions, genes_df, fs_regions, fs_df)
+
+    return anns
+
+
 def calculate_gene_lengths(df):
     """
     Calculate the lengths of the genes by end position - start position
@@ -326,8 +609,12 @@ def calculate_distances_to_telomeres(df):
     not_annotated = pandas.concat([df[df['seqid'].isna()], na_cents])
 
     # convert all positions to int type to allow relevant operations and removal of trailing .0
-    no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int,
-                                "gene_length": int, "Centromere": int})
+    if "gene_length" in no_na_df.columns:
+        no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int,
+                                    "gene_length": int, "Centromere": int})
+    else:
+        no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int, "Centromere": int})
+
 
     # print(no_na_df.head())
     # print(no_na_df.columns)
@@ -338,8 +625,12 @@ def calculate_distances_to_telomeres(df):
 
     # convert the integers to strings to prevent trailing .0s reappearing after NaN values are added back in
     no_na_df = no_na_df.astype({"g-t_distance": int})
-    no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "gene_length": str,
-                                "Centromere": str, "g-t_distance": str})
+    if "gene_length" in no_na_df.columns:
+        no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "gene_length": str,
+                                    "Centromere": str, "g-t_distance": str})
+    else:
+        no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "Centromere": str,
+                                    "g-t_distance": str})
 
     # add the removed rows back in
     df = pandas.concat([no_na_df, not_annotated])
@@ -415,8 +706,8 @@ def recreate_manually_updated_excel_doc(df, outname):
     :return: output file
     """
     # read the file in
-    # in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
-    in_genes = pandas.read_excel('C:/Users/ec339/Downloads/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
+    in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
+    # in_genes = pandas.read_excel('C:/Users/ec339/Downloads/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
 
     with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
         for sname, s in in_genes.items():
