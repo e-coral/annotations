@@ -6,7 +6,6 @@ import pandas
 
 outdir = (Path(__file__).parent / 'capC_output').resolve()
 refs_dir = (Path(__file__).parent / 'annotate/ref_files').resolve()
-print(refs_dir)
 
 
 def format_columns(df, orig_col_names):
@@ -16,64 +15,55 @@ def format_columns(df, orig_col_names):
     :param orig_col_names: list of the original column names
     :return: formatted dataframe of values and annotations
     """
-    for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'g-t_distance', 'repeats', 'fragile_sites', 'genes', 'gene_lengths']:
+    # add the names of the new columns to the names of the original columns
+    for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'region-telomere_distance', 'repeats', 'fragile_sites', 'genes', 'gene_lengths']:
         orig_col_names.append(col)
 
+    # rename the columns accordingly
     df.columns = orig_col_names
 
+    # drop the telomere and centromere columns that aren't needed in the final output
     df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'Centromere'])
 
     return df
 
 
 def annotate_captureC_spreadsheet():
+    """
+    For all the spreadsheets, read in the data, annotate it, and return the annotated file
+    :return: annotated version of the input file
+    """
+    # for all the input files
     for filename in refs_dir.glob(r'CaC*.xlsx'):
+        # generate the relevant output file name
         outname = f"annotated_{filename.stem}.xlsx"
-        # print(outname)
 
+        # create the output file
         with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
+            # read in the input file
             infile = pandas.read_excel(filename, sheet_name=None)
-            # print(len(infile.items()))
+            # for each sheet in the input file (probably only one for each in this case)
             for sname, s in infile.items():
-                # print(sname, len(s))
+                # if the sheet is not empty
                 if not s.empty:
+                    # store the original column names to be able to add them back in later
                     orig_columns = [col.strip() for col in s.columns]
-                    # s["chrom"] = s["chrom"].astype(str)
+
+                    # rename the chrom column, because some of the methods may be based on 'seqid'
                     s.rename(columns={"chrom": "seqid"}, inplace=True)
-                    # print(s["seqid"])
-                    # print(s["seqid"][3])
-                    # print(type(s["seqid"][3]))
+
+                    # calculate the distance between the region and the nearest telomere
                     s = annotate.calculate_distances_to_telomeres(s)
-                    # print(type(s["seqid"][3]))
 
+                    # annotate the genes, fragile sites, repeats and gene sizes
                     regions_df = annotate.annotate_overlaps(s)
-                    # print(type(regions_df["seqid"][3]))
 
-                    # print(regions_df.head())
-                    # exit()
-
+                    # reformat the final df to match the input
                     final = format_columns(regions_df, orig_columns)
+
+                    # create output files
                     final.to_excel(writer, sheet_name=sname, index=False)
                     final.to_csv(os.path.join(outdir, f"{sname}.csv"), index=False)
-
-
-
-                    # trim away the additional columns
-
-            #
-            #         # add gene lengths, telomere distances and gene locations
-            #         s_df = annotate.calculate_gene_lengths(s_df)
-            #
-            #         # print(s_df.columns)
-            #         s_df = annotate.calculate_distances_to_telomeres(s_df)
-            #         # print(s_df.columns)
-            #         s_df = annotate.add_gene_location(s_df)
-            #
-            #         # remove the irrelevant columns
-            #         s_df = s_df[["Orig_gene", "Alt_gene", "Gene", "Chr", "start", "end", "gene_length", "g-t_distance", "full_gene_loc"]]
-            #
-            #         # rename columns
-            #         s_df.columns = ["Orig_Gene", "Alt_Gene", "Gene", "Chr", "Start", "End", "Gene_length", "Distance_to_telomere", "Gene_loc"]
 
 
 if __name__ == '__main__':
