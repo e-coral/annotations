@@ -16,6 +16,12 @@ def format_columns(df, orig_col_names):
     :param orig_col_names: list of the original column names
     :return: formatted dataframe of values and annotations
     """
+    for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'g-t_distance', 'repeats', 'fragile_sites', 'genes', 'gene_lengths']:
+        orig_col_names.append(col)
+
+    df.columns = orig_col_names
+
+    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'Centromere'])
 
     return df
 
@@ -27,20 +33,28 @@ def annotate_captureC_spreadsheet():
 
         with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
             infile = pandas.read_excel(filename, sheet_name=None)
-            print(f"infile length = {len(infile)}")
+            # print(len(infile.items()))
             for sname, s in infile.items():
+                # print(sname, len(s))
                 if not s.empty:
                     orig_columns = [col.strip() for col in s.columns]
+                    # s["chrom"] = s["chrom"].astype(str)
                     s.rename(columns={"chrom": "seqid"}, inplace=True)
+                    # print(s["seqid"])
+                    # print(s["seqid"][3])
+                    # print(type(s["seqid"][3]))
                     s = annotate.calculate_distances_to_telomeres(s)
+                    # print(type(s["seqid"][3]))
 
                     regions_df = annotate.annotate_overlaps(s)
+                    # print(type(regions_df["seqid"][3]))
 
-                    print(regions_df.head())
-                    exit()
+                    # print(regions_df.head())
+                    # exit()
 
-                    final = format_columns(s, orig_columns)
+                    final = format_columns(regions_df, orig_columns)
                     final.to_excel(writer, sheet_name=sname, index=False)
+                    final.to_csv(os.path.join(outdir, f"{sname}.csv"), index=False)
 
 
 

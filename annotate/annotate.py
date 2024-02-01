@@ -341,13 +341,13 @@ def get_regions_per_chr(df):
     :return: dict with chromosomes as keys and the rest of the df values as values
     """
     if "seqid" in df.columns:
-        regions_by_chr = {k: v for k, v in df.groupby(['seqid'])}
+        regions_by_chr = {k: v for k, v in df.groupby('seqid')}
     elif "chr" in df.columns:
-        regions_by_chr = {k: v for k, v in df.groupby(['chr'])}
+        regions_by_chr = {k: v for k, v in df.groupby('chr')}
     elif "chrom" in df.columns:
-        regions_by_chr = {k: v for k, v in df.groupby(['chrom'])}
+        regions_by_chr = {k: v for k, v in df.groupby('chrom')}
     else:
-        exit(f"unable to find chromosome in the columns:\n{df.columns}")
+        exit(f"unable to find chromosome column in the columns:\n{df.columns}")
 
     return regions_by_chr
 
@@ -395,18 +395,20 @@ def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df):
     # initialise list
     fs = []
 
-    try:
-        # use the ncls find_overlap method to check whether the var positions overlap with repeat regions
-        fs_overlaps = list(fs_regions[chrom].find_overlap(pos, pos + 1))
-        # if there are any overlaps,
-        # then for each overlap in the list, use the index of the region to identify the relevant annotation
-        if fs_overlaps:
-            for item in fs_overlaps:  # usually only 1 pos-annotation overlap, but it's possible for more
-                # use the index to find the relevant annotation(s), and add them to the list for the function
-                fs.append(fs_df.iloc[item[2]].fragile_site)
+    # it won't work for chromosomes Y or M, because there are no data for those
+    if chrom not in ["chrM", "chrY"]:
+        try:
+            # use the ncls find_overlap method to check whether the var positions overlap with repeat regions
+            fs_overlaps = list(fs_regions[chrom].find_overlap(pos, pos + 1))
+            # if there are any overlaps,
+            # then for each overlap in the list, use the index of the region to identify the relevant annotation
+            if fs_overlaps:
+                for item in fs_overlaps:  # usually only 1 pos-annotation overlap, but it's possible for more
+                    # use the index to find the relevant annotation(s), and add them to the list for the function
+                    fs.append(fs_df.iloc[item[2]].fragile_site)
 
-    except KeyError:
-        exit(f"No fragile sites annotations available for {chrom}.")
+        except KeyError:
+            print(f"No fragile sites annotations available for {chrom}.")
 
     # join the function list (even if empty) into a comma-separated string and add it to the annotations list
     f_sites.append(", ".join(fs))
@@ -420,11 +422,12 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
     :param chrom: chromosome number of a variant
     :param pos: position of the junction of a variant
     :param list gene_names: list of gene name annotations to be added to
+    :param gene_regions: NCLS of the gene regions
+    :param gene_df: dataframe containing gene data for the chromosome
     :param list gene_sizes: list of gene size annotations to be added to
     :param list exons: list of exon label annotations to be added to
     :return: list of variant junction-overlapping fragile sites regions for annotation
     """
-    print(type(gene_names))
     exon = False
     gene_length = []
     gene_name = []
@@ -450,7 +453,7 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                     exon = True
 
     except KeyError:
-        exit(f"No gene annotations available for {chrom}.")
+        print(f"No gene annotations available for {chrom}.")
 
     gene_sizes.append(", ".join(gene_length))
     gene_names.append(", ".join(gene_name))
@@ -477,7 +480,7 @@ def add_annotation_column(df, data_list, column_name):
         else:
             # if the lengths differ, something has gone wrong
             print(f"The length of the annotations list for '{column_name}' does not equal the length "
-                              f"of the variants csv.")
+                  f"of the variants csv.")
             print(f"Continuing without '{column_name}' annotations")
             df[column_name] = ""
     # if the list is empty (e.g. chrM), just add an empty column
@@ -513,11 +516,12 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
             start_pos = int(r['start'])
             repeats = find_reps_overlaps(chrom, start_pos, repeats, rep_regions, rep_df)
             f_sites = find_fs_overlaps(chrom, start_pos, f_sites, fs_regions, fs_df)
-            genes = find_gene_overlaps(chrom, start_pos, genes, gene_regions, gene_df, gene_lengths, exons)
+            genes, sizes, exons = find_gene_overlaps(chrom, start_pos, genes, gene_regions, gene_df, gene_lengths, exons)
 
         v = add_annotation_column(v, repeats, "repeats")
         v = add_annotation_column(v, f_sites, "fragile_sites")
         v = add_annotation_column(v, genes, "genes")
+        v = add_annotation_column(v, gene_lengths, "gene_lengths")
 
     final_df = pandas.concat(regions, ignore_index=True)
 
@@ -569,8 +573,13 @@ def annotate_overlaps(df):
     # create the NCLSs for the repeats, genes and fragile sites
     reps_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, genes_df, fs_df)
 
+    # print(type(df["seqid"][3]))
     # create the NCLS for the regions of interest
     regions = get_regions_per_chr(df)
+    # for k in regions.keys():
+    #     print(f"{k}, {type(k)}")
+    # print(type(df["seqid"][3]))
+    # exit()
 
     # find the overlaps between the features and regions of interest
     anns = find_overlapping_features(regions, reps_regions, reps_df, genes_regions, genes_df, fs_regions, fs_df)
