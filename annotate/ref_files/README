@@ -7,7 +7,8 @@ telomeres (chr3 and chr11 ITS deleted). Then, the script get_non-telomere_region
 regions contained within the telomeres bed file (i.e. the start and end of the non-telomere chromosomes), which are
 more useful for these analyses.
 
-@ The genes file was obtained from ftp://ftp.ccb.jhu.edu/pub/data/T2T-CHM13/chm13v2.0_RefSeq_Liftoff_v4.gff3 (2023-08-04),
+@ The genes file was obtained from ftp://ftp.ccb.jhu.edu/pub/data/T2T-CHM13/chm13v2.0_RefSeq_Liftoff_v4.gff3
+(https://ccb.jhu.edu/T2T.shtml, 2023-08-04),
 originally for eccDNA annotations. get_just_genes.py was run to keep only genes info (thereby reducing the size
 of the file to be more manageable for these analyses)
 

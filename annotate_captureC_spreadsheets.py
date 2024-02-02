@@ -16,7 +16,8 @@ def format_columns(df, orig_col_names):
     :return: formatted dataframe of values and annotations
     """
     # add the names of the new columns to the names of the original columns
-    for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'region-telomere_distance', 'repeats', 'fragile_sites', 'genes', 'gene_lengths']:
+    for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'region-telomere_distance', 'repeats', 'fragile_sites',
+                'genes', 'gene_lengths', 'g-t_distance']:
         orig_col_names.append(col)
 
     # rename the columns accordingly
@@ -24,6 +25,9 @@ def format_columns(df, orig_col_names):
 
     # drop the telomere and centromere columns that aren't needed in the final output
     df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'Centromere'])
+
+    # set values to strings to prevent trailing .0s
+    df = df.astype(str)
 
     return df
 

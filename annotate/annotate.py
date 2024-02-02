@@ -19,6 +19,9 @@ ensembl_genes = 'ensembl_IDs_to_gene_names.csv'
 reps_file = 'chm13v2.0_rmsk.bed'
 fs_file = 'all_fragile_sites_positions.tsv'
 
+# set the df printing width to allow viewing all columns
+pandas.set_option('display.max_columns', None)
+
 
 def get_telomere_boundaries():
     """
@@ -92,8 +95,9 @@ def get_genes_df():
     """
     genes_df = pandas.read_csv(os.path.join(refs_dir, genes_file))
     genes_df = calculate_gene_lengths(genes_df)
+    genes_df = calculate_distances_to_telomeres(genes_df, keep_int=True)
 
-    return genes_df.astype({'gene_length': str})
+    return genes_df.astype({'gene_length': str, 'g-t_distance': str})
 
 
 def get_fs_df():
@@ -416,7 +420,7 @@ def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df):
     return f_sites
 
 
-def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes, exons):
+def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes, gtds):
     """
     find positions of variant junctions that overlap with genes regions
     :param chrom: chromosome number of a variant
@@ -425,10 +429,10 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
     :param gene_regions: NCLS of the gene regions
     :param gene_df: dataframe containing gene data for the chromosome
     :param list gene_sizes: list of gene size annotations to be added to
-    :param list exons: list of exon label annotations to be added to
+    :param list gtds: list of gene-telomere distances to be added to
     :return: list of variant junction-overlapping fragile sites regions for annotation
     """
-    exon = False
+    gtd = []
     gene_length = []
     gene_name = []
 
@@ -441,6 +445,7 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                 # if the type of the annotation is a gene, then get the gene name and size
                 if relevant_data.type == "gene":
                     gene_length.append(relevant_data.gene_length)
+                    gtd.append(relevant_data["g-t_distance"])
                     # extract the gene name from the attributes field
                     atts = relevant_data.attributes
                     if match := re.search(r'.*;gene_name=(.*?);.*', atts):
@@ -448,21 +453,14 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                     else:
                         gene_name.append("")
 
-                # if the variant overlaps with any exon entries, set exon = True
-                if "exon" in relevant_data.type:
-                    exon = True
-
     except KeyError:
         print(f"No gene annotations available for {chrom}.")
 
     gene_sizes.append(", ".join(gene_length))
     gene_names.append(", ".join(gene_name))
-    if exon:
-        exons.append("exon")
-    else:
-        exons.append("")
+    gtds.append(", ".join(gtd))
 
-    return gene_names, gene_sizes, exons
+    return gene_names, gene_sizes, gtds
 
 
 def add_annotation_column(df, data_list, column_name):
@@ -501,7 +499,7 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
     :param gene_df: df of gene regions
     :param fs_regions: fs regions dict
     :param fs_df: df of fs regions
-    :return: annotations within the dict  # TODO: check this is right
+    :return: annotations within the dict
     """
     for chrom, v in regions.items():
         # initialise the lists of annotations
@@ -509,19 +507,20 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
         f_sites = []
         genes = []
         gene_lengths = []
-        exons = []
+        gtd = []
 
         for i, r in v.iterrows():  # i = df index (int), r = df row
             # get the start position for the region
             start_pos = int(r['start'])
             repeats = find_reps_overlaps(chrom, start_pos, repeats, rep_regions, rep_df)
             f_sites = find_fs_overlaps(chrom, start_pos, f_sites, fs_regions, fs_df)
-            genes, sizes, exons = find_gene_overlaps(chrom, start_pos, genes, gene_regions, gene_df, gene_lengths, exons)
+            genes, sizes, gtd = find_gene_overlaps(chrom, start_pos, genes, gene_regions, gene_df, gene_lengths, gtd)
 
         v = add_annotation_column(v, repeats, "repeats")
         v = add_annotation_column(v, f_sites, "fragile_sites")
         v = add_annotation_column(v, genes, "genes")
         v = add_annotation_column(v, gene_lengths, "gene_lengths")
+        v = add_annotation_column(v, gtd, "gene-telomere_distances")
 
     final_df = pandas.concat(regions, ignore_index=True)
 
@@ -552,7 +551,6 @@ def make_annotation_ncls(reps_df, genes_df, fs_df):
     create the NCLS objects for annotations
     :return: the NCLS objects for annotations
     """
-
     reps_regions = get_annotation_regions(reps_df)
     genes_regions = get_annotation_regions(genes_df)
     fs_regions = get_annotation_regions(fs_df)
@@ -568,6 +566,7 @@ def annotate_overlaps(df):
     """
     reps_df = get_reps_df()
     genes_df = get_genes_df()
+    # print(genes_df.head())
     fs_df = get_fs_df()
 
     # create the NCLSs for the repeats, genes and fragile sites
@@ -597,10 +596,11 @@ def calculate_gene_lengths(df):
     return df
 
 
-def calculate_distances_to_telomeres(df):
+def calculate_distances_to_telomeres(df, keep_int=False):
     """
     Calculate the distances between genes and the telomere on the same chromosome arm
     :param df: the dataframe containing the gene info
+    :param keep_int: whether to convert values to strings for printing, or maintain integers for further operations
     :return: df containing telomere positions and distances between genes and telomere boundaries
     """
     # temporarily remove na values to allow successful conversion for calculations
@@ -624,22 +624,28 @@ def calculate_distances_to_telomeres(df):
     else:
         no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int, "Centromere": int})
 
-
-    # print(no_na_df.head())
-    # print(no_na_df.columns)
-
-    # if the gene is on the p arm, calculate the distance to the p telomere
+    # if the gene is on the p arm, calculate the distance to the p telomere. else, calculate to the q
     no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), "g-t_distance"] = no_na_df["start"] - no_na_df["Start"]
     no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), "g-t_distance"] = no_na_df["End"] - no_na_df["end"]
 
-    # convert the integers to strings to prevent trailing .0s reappearing after NaN values are added back in
+    # to get rid of the trailing .0s in this column, convert to int AND to string, to prevent the .0s returning
+    # after re-addition of the temporarily removed entries
     no_na_df = no_na_df.astype({"g-t_distance": int})
-    if "gene_length" in no_na_df.columns:
-        no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "gene_length": str,
-                                    "Centromere": str, "g-t_distance": str})
-    else:
-        no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "Centromere": str,
-                                    "g-t_distance": str})
+    no_na_df = no_na_df.astype({"g-t_distance": str})
+    # print(type(no_na_df["g-t_distance"][5]), type(no_na_df["start"][5]), type(no_na_df["end"][5]))
+    # print(no_na_df.head())
+
+    if not keep_int:
+        # convert the integers to strings to prevent trailing .0s reappearing after NaN values are added back in
+
+        if "gene_length" in no_na_df.columns:
+            no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "gene_length": str,
+                                        "Centromere": str, "g-t_distance": str})
+        else:
+            no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "Centromere": str,
+                                        "g-t_distance": str})
+
+        not_annotated = not_annotated.astype(str)
 
     # add the removed rows back in
     df = pandas.concat([no_na_df, not_annotated])
@@ -702,7 +708,8 @@ def recreate_multisheet_excel_doc(df, outname):
             # print(tmp_df.columns)
 
             # reorder again
-            tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End', 'Gene_length', 'Distance_to_telomere', 'Gene_loc']]
+            tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End',
+                             'Gene_length', 'Distance_to_telomere', 'Gene_loc']]
 
             # print(tmp_df.head())
             tmp_df.to_excel(writer, sheet_name=s.name, index=False)
