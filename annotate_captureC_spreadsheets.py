@@ -40,7 +40,7 @@ def annotate_captureC_spreadsheet():
     # for all the input files
     for filename in refs_dir.glob(r'CaC*.xlsx'):
         # generate the relevant output file name
-        outname = f"annotated_{filename.stem}.xlsx"
+        outname = f"annotated_{filename.stem}-exploded.xlsx"
 
         # create the output file
         with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
@@ -65,9 +65,12 @@ def annotate_captureC_spreadsheet():
                     # reformat the final df to match the input
                     final = format_columns(regions_df, orig_columns)
 
+                    # split out the genes into separate columns, if preferred
+                    final = annotate.split_multiple_genes(final)
+
                     # create output files
                     final.to_excel(writer, sheet_name=sname, index=False)
-                    final.to_csv(os.path.join(outdir, f"{sname}.csv"), index=False)
+                    final.to_csv(os.path.join(outdir, f"{sname}-exploded.csv"), index=False)
 
 
 if __name__ == '__main__':

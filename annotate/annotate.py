@@ -769,7 +769,18 @@ def input_file_to_dataframe():
     return genes_df
 
 
+def split_multiple_genes(ann_df):
+    """
+    if there are multiple genes for any of the regions, split them into single rows
+    :param ann_df: the dataframe containing all relevant annotations
+    :return: edited df
+    """
+    to_explode = ['genes', 'gene_lengths', 'g-t_distance']
+    for heading in to_explode:
+        ann_df[heading] = ann_df[heading].str.split(', ')
+    ann_df = ann_df.explode(to_explode)
 
+    return ann_df
 
 
 

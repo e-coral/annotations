@@ -61,8 +61,11 @@ def annotate_kasseq_results():
         # reformat the final df to match the input
         final = format_columns(regions_df, orig_columns)
 
+        # split out the genes into separate columns, if preferred
+        final = annotate.split_multiple_genes(final)
+
         # write output file
-        final.to_csv(os.path.join(outdir, f"{outname}.csv"), index=False)
+        final.to_csv(os.path.join(outdir, f"{outname}-exploded.csv"), index=False)
 
 
 if __name__ == '__main__':
