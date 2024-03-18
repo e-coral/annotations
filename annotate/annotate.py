@@ -214,7 +214,7 @@ def add_all_positions(genes, annotations):
     pos_df3.dropna(subset=['seqid', 'start'], inplace=True)
     pos_df4.dropna(subset=['seqid', 'start'], inplace=True)
 
-    pos_df4.to_csv(os.path.join(outdir, 'pos_df4.csv'), index=False)
+    # pos_df4.to_csv(os.path.join(outdir, 'pos_df4.csv'), index=False)
 
     # concatenate the dfs
     pos_df = pandas.concat([pos_df1, pos_df2, pos_df3, pos_df4], ignore_index=True, sort=False)
@@ -746,14 +746,17 @@ def recreate_manually_updated_excel_doc(df, outname):
                 tmp_df.to_excel(writer, sheet_name=sname, index=False)
 
 
-def input_file_to_dataframe():
+def input_file_to_dataframe(infilepath=None):
     """
     Read in the input file and convert it into a df
-
+    :param infilepath: path to input file
     :return: df containing input file gene names
     """
-    # read the file in, and add column names for ensembl genes
-    in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
+    if infilepath:
+        in_genes = pandas.read_excel(infilepath)
+    else:
+        # read the file in, and add column names for ensembl genes
+        in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
 
     # print(in_genes)
 
