@@ -18,7 +18,7 @@ def format_columns(df, orig_col_names):
     """
     # add the names of the new columns to the names of the original columns
     for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'region-telomere_distance', 'repeats', 'fragile_sites',
-                'genes', 'gene_lengths', 'g-t_distance']:
+                'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
         orig_col_names.append(col)
 
     # rename the columns accordingly
@@ -38,9 +38,9 @@ def annotate_results():
     read in the file, add the annotations, and output the annotated file
     :return: annotated file
     """
-    for infile in glob.glob('C:/Users/ec339/Downloads/window_analysis/window_analysis/multiintersect_outputs/just_results/*'):
+    for infile in glob.glob('C:/Users/ec339/Downloads/new_windows/window_analysis/multiintersects/mi_results/*'):
         outname = f"annotated_{os.path.basename(infile)}"
-        winsize = outname.split("_")[1].strip("kb")
+        winsize = outname.split("_")[2].strip("kb")
         if winsize.endswith("m"):
             winsize = 1000000
         else:
@@ -74,11 +74,11 @@ def annotate_results():
         final = format_columns(regions_df, orig_columns)
 
         # split out the genes into separate columns, if preferred
-        # final = annotate.split_multiple_genes(final)  # not preferred for in_both!
+        final = annotate.split_multiple_genes(final)  # not preferred for in_both!
 
         # write output file
-        # final.to_csv(os.path.join(outdir, f"{outname}-exploded.csv"), index=False)
-        final.to_csv(os.path.join(outdir, f"plain_{outname}.csv"), index=False)
+        final.to_csv(os.path.join(outdir, f"with_gene_positions_{outname}-exploded.csv"), index=False)
+        # final.to_csv(os.path.join(outdir, f"with_gene_positions_{outname}.csv"), index=False)
 
 
 if __name__ == '__main__':

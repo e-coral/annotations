@@ -6,6 +6,7 @@ import pandas
 
 outdir = (Path(__file__).parent / 'kas-seq_output').resolve()
 refs_dir = (Path(__file__).parent / 'annotate/ref_files').resolve()
+indir = (Path(os.path.join(refs_dir, 'kas-seq_results')).resolve())
 
 
 def format_columns(df, orig_col_names):
@@ -38,34 +39,35 @@ def annotate_kasseq_results():
     :return: annotated file
     """
     # for each of the ouput files
-    for filename in refs_dir.glob(r'minoverlap*'):
+    for rt, _, files in os.walk(os.path.abspath(indir)):
+        for filename in files:
 
-        # create the output file name
-        outname = f"annotated_{filename.stem}"
+            # create the output file name
+            outname = f"annotated_{filename}"
 
-        # read in the data
-        res = pandas.read_csv(filename, header=0)
+            # read in the data
+            res = pandas.read_csv(os.path.join(rt, filename), header=0)
 
-        # store the original column names to be able to add them back in later
-        orig_columns = [col.strip() for col in res.columns]
+            # store the original column names to be able to add them back in later
+            orig_columns = [col.strip() for col in res.columns]
 
-        # rename the seqnames column, because some of the methods may be based on 'seqid'
-        res.rename(columns={"seqnames": "seqid"}, inplace=True)
+            # rename the seqnames column, because some of the methods may be based on 'seqid'
+            res.rename(columns={"seqnames": "seqid"}, inplace=True)
 
-        # calculate the distance between the region and the nearest telomere
-        res = annotate.calculate_distances_to_telomeres(res)
+            # calculate the distance between the region and the nearest telomere
+            res = annotate.calculate_distances_to_telomeres(res)
 
-        # annotate the genes, fragile sites, repeats and gene sizes
-        regions_df = annotate.annotate_overlaps(res)
+            # annotate the genes, fragile sites, repeats and gene sizes
+            regions_df = annotate.annotate_overlaps(res)
 
-        # reformat the final df to match the input
-        final = format_columns(regions_df, orig_columns)
+            # reformat the final df to match the input
+            final = format_columns(regions_df, orig_columns)
 
-        # split out the genes into separate columns, if preferred
-        final = annotate.split_multiple_genes(final)
+            # split out the genes into separate columns, if preferred
+            # final = annotate.split_multiple_genes(final)
 
-        # write output file
-        final.to_csv(os.path.join(outdir, f"{outname}-exploded.csv"), index=False)
+            # write output file
+            final.to_csv(os.path.join(outdir, outname), index=False)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,5 @@
+# for annotating a list of genes in a single column in an excel file
+
 import pandas
 import glob
 from pathlib import Path
