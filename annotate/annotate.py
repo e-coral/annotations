@@ -243,10 +243,11 @@ def get_plain_gene(df, col_name):
     return plain_gene
 
 
-def remove_additional_copies(pos_df):
+def remove_additional_copies(pos_df, only_longest_transcript = False):
     """
     Remove duplicates and additional copies of gene positions from the df
-    :param pos_df:
+    :param pos_df: df containing gene positions with possible duplicates
+    :param bool only_longest_transcript: whether to only keep rows for the longest transcript
     :return: clean df of genes and positions
     """
     # initialise the list of dfs of relevant entries
@@ -254,6 +255,9 @@ def remove_additional_copies(pos_df):
 
     # remove duplicates
     pos_df.drop_duplicates(inplace=True)
+
+    if only_longest_transcript:
+        pos_df = calculate_gene_lengths(pos_df)
 
     # split the df by original gene name, to determine if they are associated with multiple entries
     grouped = pos_df.groupby('orig_gene')
@@ -263,28 +267,31 @@ def remove_additional_copies(pos_df):
             relevant_entries.append(group[1])
         # if there's more than one entry, check, de-duplicate, add relevant entries to the final df
         else:
-            # count the number of unique gene/gene_name entries (excluding empty/NaN values)
-            unique_gene_name = find_unique_genes_in_column(group[1].gene_name)
-            unique_gene = find_unique_genes_in_column(group[1].gene)
-
-            # if there's only one unique name in one of the columns, then test whether there's a single value in the
-            # other column that exactly matches the gene name (orig or alt).
-            # If so, add that single row. Else, add all rows.
-            if len(unique_gene_name) == 1:
-                plain_gene = get_plain_gene(group[1], "gene")
-
-            elif len(unique_gene) == 1:
-                plain_gene = get_plain_gene(group[1], "gene_name")
-
+            if only_longest_transcript:
+                plain_gene = group[1][group[1]['gene_length'] == group[1]['gene_length'].max()]
             else:
-                plain_gene = pandas.DataFrame({})
-                if len(unique_gene_name) > 1 and len(unique_gene) > 1:
-                    print(f"non-na unique gene names in the group for {group[0]}")
-                    group[1].to_csv(os.path.join(outdir, f"{group[0]}-non-unique.csv"))
+                # count the number of unique gene/gene_name entries (excluding empty/NaN values)
+                unique_gene_name = find_unique_genes_in_column(group[1].gene_name)
+                unique_gene = find_unique_genes_in_column(group[1].gene)
+
+                # if there's only one unique name in one of the columns, then test whether there's a single value in the
+                # other column that exactly matches the gene name (orig or alt).
+                # If so, add that single row. Else, add all rows.
+                if len(unique_gene_name) == 1:
+                    plain_gene = get_plain_gene(group[1], "gene")
+
+                elif len(unique_gene) == 1:
+                    plain_gene = get_plain_gene(group[1], "gene_name")
+
                 else:
-                    print(f"The gene names column contained {len(unique_gene_name)} unique entries,"
-                          f"and the gene column contained {len(unique_gene)} entries")
-                    group[1].to_csv(os.path.join(outdir, f"{group[0]}-multiple_entries.csv"))
+                    plain_gene = pandas.DataFrame({})
+                    if len(unique_gene_name) > 1 and len(unique_gene) > 1:
+                        print(f"non-na unique gene names in the group for {group[0]}")
+                        group[1].to_csv(os.path.join(outdir, f"{group[0]}-non-unique.csv"))
+                    else:
+                        print(f"The gene names column contained {len(unique_gene_name)} unique entries,"
+                              f"and the gene column contained {len(unique_gene)} entries")
+                        group[1].to_csv(os.path.join(outdir, f"{group[0]}-multiple_entries.csv"))
 
             if not plain_gene.empty:
                 relevant_entries.append(plain_gene)
@@ -306,7 +313,7 @@ def add_position_annotations(genes, annotations):
     """
     pos_df = add_all_positions(genes, annotations)
 
-    relevant_entries = remove_additional_copies(pos_df)
+    relevant_entries = remove_additional_copies(pos_df, only_longest_transcript=True)
 
     return relevant_entries
 
@@ -399,8 +406,8 @@ def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df, posend=None):
     :param chrom: chromosome number of a variant
     :param pos: position of the junction of a variant
     :param list f_sites: list of annotated variants to be added to
-    :param list fs_regions: the regions of fragile sites
-    :param list fs_df: fragile sites dataframe
+    :param dict fs_regions: the dict of NCLSs for the of fragile sites regions
+    :param pandas.DataFrame fs_df: fragile sites dataframe
     :param posend: if using an end position, add here. else, None, so that it can be set to start + 1
     :return: list of variant junction-overlapping fragile sites regions for annotation
     """
@@ -441,8 +448,8 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
     :param list gene_sizes: list of gene size annotations to be added to
     :param list gtds: list of gene-telomere distances to be added to
     :param list gene_positions: list of positions of genes to be added to
-    :param pos: position of the end of the variant, if supplied (otherwise, set to be start pos + 1)
-    :return: list of variant junction-overlapping fragile sites regions for annotation
+    :param posend: position of the end of the variant, if supplied (otherwise, set to be start pos + 1)
+    :return: list of variant junction-overlapping gene sites regions for annotation
     """
     gtd = []
     gene_length = []
@@ -460,8 +467,8 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
 
                 # if the type of the annotation is a gene, then get the gene name and size
                 if relevant_data.type == "gene":
-                    print(relevant_data)
-                    exit()
+                    # print(relevant_data)
+                    # exit()
                     gene_length.append(relevant_data.gene_length)
                     gtd.append(relevant_data["g-t_distance"])
                     gene_pos.append(f"{relevant_data['chr']}:{relevant_data['start']}-{relevant_data['end']}")
@@ -473,7 +480,7 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                         gene_name.append("")
 
     except KeyError:
-        print(f"No gene annotations available for {chrom}.")
+        print(f"No gene annotations available for {chrom} {pos} {posend}.")
 
     gene_sizes.append(", ".join(gene_length))
     gene_names.append(", ".join(gene_name))
@@ -550,6 +557,73 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
     return final_df
 
 
+def annotate_just_fragile_sites(df):
+    """
+    annotate the regions of interest with overlapping fragile sites
+    :param df: the input df
+    :return: df annotated with fragile sites
+    """
+    # read the fragile sites reference file into a relevant df
+    fs_df = get_fs_df()
+
+    # create the NCLS for the fragile sites regions
+    fs_regions = get_annotation_regions(fs_df)
+
+    # create the NCLS for the regions of interest
+    regions = get_regions_per_chr(df)
+
+    for chrom, v in regions.items():
+        # initialise the list of annotations
+        f_sites = []
+        for i, r in v.iterrows():  # i = df index (int), r = df row
+            # get the start and end positions for the region
+            start_pos = int(r['start'])
+            end_pos = int(r['end'])
+            f_sites = find_fs_overlaps(chrom, start_pos, f_sites, fs_regions, fs_df, posend=end_pos)
+
+        v = add_annotation_column(v, f_sites, "fragile_sites")
+
+    final_df = pandas.concat(regions, ignore_index=True)
+
+    return final_df
+
+
+def annotate_existing_genes(df, column_name):
+    """
+    if the input file already contains genes, then match them to the relevant reference genes
+    in order to obtain positions and lengths
+    :param df: input dataframe of positions etc.
+    :param str column_name: name of the column containing the genes
+    :return: df with added gene lengths, positions and distance to tels
+    """
+    # get the genes from the ref files
+    genes = get_gene_annotations()
+
+    # get the gene names from the input file
+    df_genes = pandas.DataFrame(df, columns=[column_name])
+    df_genes.rename(columns={column_name: "orig_gene"}, inplace=True)
+
+    # convert any ensembl genes/create the alternative gene name column for downstream compatibility
+    df_genes = convert_ensembl_ids(df_genes)
+
+    # print(df_genes.columns)
+
+    # add the positions to the input genes
+    pos_anns = add_position_annotations(df_genes, genes)
+
+    # calculate the lengths and gene-telomere distances from the positions
+    len_annotated = calculate_gene_lengths(pos_anns)
+    # print(len_annotated.head())
+    tel_annotated = calculate_distances_to_telomeres(len_annotated)
+
+    # add the location format (dropped later if not needed, but adding it here makes other steps easier/more universal)
+    full_df = add_gene_location(tel_annotated)
+
+    final_df = reformat_for_output(full_df)
+
+    return final_df
+
+
 def get_annotation_regions(df):
     """
     get the NCLS for the regions relating to the annotations
@@ -572,6 +646,9 @@ def get_annotation_regions(df):
 def make_annotation_ncls(reps_df, genes_df, fs_df):
     """
     create the NCLS objects for annotations
+    :param pandas.DataFrame reps_df: annotation data df
+    :param pandas.DataFrame genes_df: annotation data df
+    :param pandas.DataFrame fs_df: annotation data df
     :return: the NCLS objects for annotations
     """
     reps_regions = get_annotation_regions(reps_df)
@@ -637,7 +714,7 @@ def calculate_distances_to_telomeres(df, keep_int=False):
     na_cents = no_na_df[no_na_df['Centromere'].isna()]
     no_na_df = no_na_df.dropna(subset=['Centromere'])
 
-    # generate a df of the genes for which no annotations were found
+    # generate a df of the regions for which no annotations were found
     not_annotated = pandas.concat([df[df['seqid'].isna()], na_cents])
 
     # convert all positions to int type to allow relevant operations and removal of trailing .0
@@ -647,7 +724,7 @@ def calculate_distances_to_telomeres(df, keep_int=False):
     else:
         no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int, "Centromere": int})
 
-    # if the gene is on the p arm, calculate the distance to the p telomere. else, calculate to the q
+    # if the region is on the p arm, calculate the distance to the p telomere. else, calculate to the q
     no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), "g-t_distance"] = no_na_df["start"] - no_na_df["Start"]
     no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), "g-t_distance"] = no_na_df["End"] - no_na_df["end"]
 
@@ -694,8 +771,12 @@ def reformat_for_output(df):
     :return: reformatted df
     """
     # keep only relevant info
-    df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
-             'gene_length', "g-t_distance", "gene_positions", 'full_gene_loc']]
+    if "gene_positions" in df.columns:
+        df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
+                 'gene_length', "g-t_distance", "gene_positions", 'full_gene_loc']]
+    else:
+        df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
+                 'gene_length', "g-t_distance", "full_gene_loc", 'full_gene_loc']]
 
     # rename columns
     df.columns = ['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start',
