@@ -95,7 +95,7 @@ def get_genes_df():
     """
     genes_df = pandas.read_csv(os.path.join(refs_dir, genes_file))
     genes_df = calculate_gene_lengths(genes_df)
-    genes_df = calculate_distances_to_telomeres(genes_df, keep_int=True)
+    genes_df = calculate_distances_to_telomeres(genes_df, keep_int=True, isgene=True)
 
     return genes_df.astype({'gene_length': str, 'g-t_distance': str})
 
