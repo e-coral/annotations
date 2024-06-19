@@ -606,22 +606,21 @@ def annotate_existing_genes(df, column_name):
     # convert any ensembl genes/create the alternative gene name column for downstream compatibility
     df_genes = convert_ensembl_ids(df_genes)
 
-    # print(df_genes.columns)
-
     # add the positions to the input genes
     pos_anns = add_position_annotations(df_genes, genes)
 
     # calculate the lengths and gene-telomere distances from the positions
     len_annotated = calculate_gene_lengths(pos_anns)
     # print(len_annotated.head())
-    tel_annotated = calculate_distances_to_telomeres(len_annotated)
+    tel_annotated = calculate_distances_to_telomeres(len_annotated, isgene=True)
 
     # add the location format (dropped later if not needed, but adding it here makes other steps easier/more universal)
     full_df = add_gene_location(tel_annotated)
 
-    final_df = reformat_for_output(full_df)
+    trimmed_df = full_df.drop(columns=["alt_gene", "seqid", "gene_name", "gene", "Chr", "Start", "End", "Centromere"])
+    trimmed_df.rename(columns={"start": "gene_start", "end": "gene_end"}, inplace=True)
 
-    return final_df
+    return trimmed_df
 
 
 def get_annotation_regions(df):
@@ -666,7 +665,6 @@ def annotate_overlaps(df):
     """
     reps_df = get_reps_df()
     genes_df = get_genes_df()
-    # print(genes_df.head())
     fs_df = get_fs_df()
 
     # create the NCLSs for the repeats, genes and fragile sites
@@ -696,13 +694,19 @@ def calculate_gene_lengths(df):
     return df
 
 
-def calculate_distances_to_telomeres(df, keep_int=False):
+def calculate_distances_to_telomeres(df, keep_int=False, isgene=False):
     """
-    Calculate the distances between genes and the telomere on the same chromosome arm
-    :param df: the dataframe containing the gene info
+    Calculate the distances between specified locations and the telomere on the same chromosome arm
+    :param df: the dataframe containing the location info
     :param keep_int: whether to convert values to strings for printing, or maintain integers for further operations
-    :return: df containing telomere positions and distances between genes and telomere boundaries
+    :param bool isgene: whether the type of region of interest is a gene
+    :return: df containing telomere positions and distances between specified locations and telomere boundaries
     """
+    if isgene:
+        colname = "g-t_distance"
+    else:
+        colname = "reg-tel_distance"
+
     # temporarily remove na values to allow successful conversion for calculations
     no_na_df = df.dropna(subset=['seqid'])
 
@@ -725,13 +729,13 @@ def calculate_distances_to_telomeres(df, keep_int=False):
         no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int, "Centromere": int})
 
     # if the region is on the p arm, calculate the distance to the p telomere. else, calculate to the q
-    no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), "g-t_distance"] = no_na_df["start"] - no_na_df["Start"]
-    no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), "g-t_distance"] = no_na_df["End"] - no_na_df["end"]
+    no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), colname] = no_na_df["start"] - no_na_df["Start"]
+    no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), colname] = no_na_df["End"] - no_na_df["end"]
 
     # to get rid of the trailing .0s in this column, convert to int AND to string, to prevent the .0s returning
     # after re-addition of the temporarily removed entries
-    no_na_df = no_na_df.astype({"g-t_distance": int})
-    no_na_df = no_na_df.astype({"g-t_distance": str})
+    no_na_df = no_na_df.astype({colname: int})
+    no_na_df = no_na_df.astype({colname: str})
     # print(type(no_na_df["g-t_distance"][5]), type(no_na_df["start"][5]), type(no_na_df["end"][5]))
     # print(no_na_df.head())
 
@@ -740,10 +744,10 @@ def calculate_distances_to_telomeres(df, keep_int=False):
 
         if "gene_length" in no_na_df.columns:
             no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "gene_length": str,
-                                        "Centromere": str, "g-t_distance": str})
+                                        "Centromere": str, colname: str})
         else:
             no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "Centromere": str,
-                                        "g-t_distance": str})
+                                        colname: str})
 
         not_annotated = not_annotated.astype(str)
 

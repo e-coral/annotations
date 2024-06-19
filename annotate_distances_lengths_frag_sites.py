@@ -15,17 +15,9 @@ def format_columns(df, orig_col_names):
     :param orig_col_names: list of the original column names
     :return: formatted dataframe of values and annotations
     """
-    # add the names of the new columns to the names of the original columns
-    # for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'region-telomere_distance', 'repeats', 'fragile_sites',
-    #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
-    #     orig_col_names.append(col)
-    # #
-    # print(df.columns)
-    # print(orig_col_names)
-
-    # rename the columns accordingly
-    # df.columns = orig_col_names
     df.rename(columns={"seqid": 'chrom'}, inplace=True)
+    df.fillna('', inplace=True)
+    # print(df.columns)
 
     # drop the telomere and centromere columns that aren't needed in the final output
     df = df.drop(columns=['Chr', 'Start', 'End', 'Centromere'])
@@ -68,18 +60,19 @@ def annotate_spreadsheet():
 
                     # add the gene lengths, distances, etc. to the genes in the input file
                     genes_df = annotate.annotate_existing_genes(fs_anns, "Gene")
-                    # print(fs_anns.head())
-                    # print(genes_df.head())
-                    genes_df.rename(columns={"Orig_gene": "Gene"}, inplace=True)
-                    # print(genes_df.head())
 
-                    # merge the gene anns with the rest of the df
-                    fs_anns.merge(genes_df, how='left', on='Gene')
+                    genes_df.rename(columns={"orig_gene": "Gene"}, inplace=True)
+
+                    fs_anns.to_csv(os.path.join(outdir, "fs_anns.csv"), index=False)
+                    genes_df.to_csv(os.path.join(outdir, "genes_anns.csv"), index=False)
+
+                    # merge the gene anns df with the orig + tel & fs df
+                    full_df = pandas.merge(fs_anns, genes_df, how='left', on='Gene')
                     # print(fs_anns.columns)
-                    # exit()
+                    full_df.to_csv(os.path.join(outdir, "merged.csv"), index=False)
 
                     # reformat the final df to match the input
-                    final = format_columns(fs_anns, orig_columns)
+                    final = format_columns(full_df, orig_columns)
 
                     # create output files
                     final.to_excel(writer, sheet_name=sname, index=False)
