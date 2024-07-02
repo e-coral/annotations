@@ -23,6 +23,27 @@ fs_file = 'all_fragile_sites_positions.tsv'
 pandas.set_option('display.max_columns', None)
 
 
+def get_separate_chr_pos(df, colname):
+    """
+    if positions are supplied in chr:start-end format, separate these values into separate columns
+    :param df: dataframe containing chr:start-pos format positions
+    :param str colname: name of the relevant column containing chr:start-pos data
+    :return: dataframe containing separate columns for chr, start and end
+    """
+    # create the pattern on which to split the data
+    pat = re.compile(r':(\d+)-')
+
+    # remove commas from the numbers, and any trailing spaces
+    df[colname] = df[colname].str.replace(',', '')
+    df[colname] = df[colname].str.strip()
+
+    # split into seqid, start and end based on : and -
+    df[["seqid", "start", "end"]] = df[colname].str.split(pat, expand=True)
+
+    # return the edited df
+    return df
+
+
 def get_telomere_boundaries():
     """
     Read in the bed format (tsv) telomere boundaries file
@@ -370,8 +391,8 @@ def find_reps_overlaps(chrom, pos, reps, reps_regions, reps_df, posend=None):
     :param chrom: chromosome number of a variant
     :param pos: position of the junction of a variant
     :param list reps: list of annotated variants to be added to
-    :param rep_regions: repeats regions dict
-    :param rep_df: df of rep regions
+    :param reps_regions: repeats regions dict
+    :param reps_df: df of rep regions
     :param posend: position of the end of the variant junction, if specified (otherwise, set to be pos + 1)
     :return: list of variant junction-overlapping repeats regions for annotation
     """
@@ -467,11 +488,9 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
 
                 # if the type of the annotation is a gene, then get the gene name and size
                 if relevant_data.type == "gene":
-                    # print(relevant_data)
-                    # exit()
                     gene_length.append(relevant_data.gene_length)
                     gtd.append(relevant_data["g-t_distance"])
-                    gene_pos.append(f"{relevant_data['chr']}:{relevant_data['start']}-{relevant_data['end']}")
+                    gene_pos.append(f"{relevant_data['seqid']}:{relevant_data['start']}-{relevant_data['end']}")
                     # extract the gene name from the attributes field
                     atts = relevant_data.attributes
                     if match := re.search(r'.*;gene_name=(.*?);.*', atts):
@@ -479,8 +498,8 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                     else:
                         gene_name.append("")
 
-    except KeyError:
-        print(f"No gene annotations available for {chrom} {pos} {posend}.")
+    except KeyError as err:
+        print(f"No gene annotations available for {chrom}:{pos}-{posend}.")
 
     gene_sizes.append(", ".join(gene_length))
     gene_names.append(", ".join(gene_name))
