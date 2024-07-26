@@ -1,3 +1,3 @@
-in-progress gene annotations project.
+in-progress feature annotations project.
 
 see other README files for specific information regarding resources and modules
