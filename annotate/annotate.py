@@ -534,9 +534,110 @@ def add_annotation_column(df, data_list, column_name):
     return df
 
 
+# def find_overlapping_features_for_dysgu_output(dysgu_data):
+#     """
+#     annotate each of the regions/boundaries in the dysgu output with features that overlap them
+#     # the dysgu output has two chrom columns and two position columns representing variant boundaries
+#
+#     :return:
+#     """
+#
+#     # create the dfs of annotations and NCLSs of regions covered by features to annotate
+#     reps_df = get_reps_df()
+#     genes_df = get_genes_df()
+#     fs_df = get_fs_df()
+#
+#     # create the NCLSs for the repeats, genes and fragile sites
+#     rep_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, genes_df, fs_df)
+#
+#     # split the data by chromosome
+#     vars_by_chrom = {k: v for k, v in dysgu_data.groupby("chrA")}
+#
+#     # for each chromosome, annotate the positions of the variants
+#     for k, v in vars_by_chrom.items():
+#         # initialise the lists of annotations
+#         a_repeats = []
+#         b_repeats = []
+#         a_f_sites = []
+#         b_f_sites = []
+#         a_genes = []
+#         b_genes = []
+#         a_gene_lengths = []
+#         b_gene_lengths = []
+#         a_gtd = []
+#         b_gtd = []
+#         a_gene_positions = []
+#         b_gene_positions = []
+#
+#         for i, r in v.iterrows():  # i = df index (int), r is a df row
+#             # get the start position for chrA (chrA was used to split the df, so = k)
+#             pos_a = r.posA
+#
+#             # get the chr and start position for chrB
+#             chr_b = r.chrB
+#             pos_b = r.posB - 1  # shift it down 1 for functions to get the correct range later on
+#
+#             # if the boundaries around the variant are on the same chromosome, then use the provided positions
+#             # to identify overlaps
+#             if pos_b == k:
+#                 print(f"same chr: {pos_a} = {pos_b}")
+#                 end_pos = chr_b
+#                 start_pos = pos_a
+#
+#                 # find the annotations for the region
+#                 a_repeats = find_reps_overlaps(k, start_pos, a_repeats, rep_regions, reps_df, posend=end_pos)
+#                 a_f_sites = find_fs_overlaps(k, start_pos, a_f_sites, fs_regions, fs_df, posend=end_pos)
+#                 a_genes, a_gene_lengths, a_gtd, a_gene_positions = find_gene_overlaps(k, start_pos, a_genes,
+#                                                                                       genes_regions, genes_df,
+#                                                                                       a_gene_lengths, a_gtd,
+#                                                                                       a_gene_positions, posend=end_pos)
+#                 # add empty entries to the b lists
+#                 b_repeats.append("")
+#                 b_f_sites.append("")
+#                 b_genes.append("")
+#                 b_gene_lengths.append("")
+#                 b_gtd.append("")
+#                 b_gene_positions.append("")
+#
+#             # else, use the boundaries only, by using the given position +/-1
+#             else:
+#                 start_pos = pos_b - 1
+#                 end_pos = pos_a + 1
+#
+#                 a_repeats = find_reps_overlaps(k, pos_a, a_repeats, rep_regions, reps_df, posend=end_pos)
+#                 a_f_sites = find_fs_overlaps(k, pos_a, a_f_sites, fs_regions, fs_df, posend=end_pos)
+#                 a_genes, a_gene_lengths, a_gtd, a_gene_positions = find_gene_overlaps(k, start_pos, a_genes,
+#                                                                                       genes_regions, genes_df,
+#                                                                                       a_gene_lengths, a_gtd,
+#                                                                                       a_gene_positions, posend=end_pos)
+#
+#                 b_repeats = find_reps_overlaps(chr_b, start_pos, b_repeats, rep_regions, reps_df, posend=pos_b)
+#                 b_f_sites = find_fs_overlaps(chr_b, start_pos, b_f_sites, fs_regions, fs_df, posend=pos_b)
+#                 b_genes, b_gene_lengths, b_gtd, b_gene_positions = find_gene_overlaps(chr_b, start_pos, b_genes,
+#                                                                                       genes_regions,
+#                                                                                       genes_df, b_gene_lengths, b_gtd,
+#                                                                                       b_gene_positions, posend=pos_b)
+#         v = add_annotation_column(v, a_repeats, "posA_repeats")
+#         v = add_annotation_column(v, b_repeats, "posB_repeats")
+#         v = add_annotation_column(v, a_f_sites, "posA_fragileSites")
+#         v = add_annotation_column(v, b_f_sites, "posB_fragileSites")
+#
+#         v = add_annotation_column(v, a_genes, "posA_geneName")
+#         v = add_annotation_column(v, b_genes, "posB_geneName")
+#         v = add_annotation_column(v, a_gene_lengths, "posA_geneSize(bp)")
+#         v = add_annotation_column(v, b_gene_lengths, "posB_geneSize(bp)")
+#         v = add_annotation_column(v, a_gtd, "posA_gene-telomere_distances")
+#         v = add_annotation_column(v, b_gtd, "posB_gene-telomere_distances")
+#         v = add_annotation_column(v, a_gene_positions, "gene_positions")
+#         v = add_annotation_column(v, b_gene_positions, "gene_positions")
+#
+#     final_df = pandas.concat(vars_by_chrom, ignore_index=True)
+#
+#     return final_df
+
 def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_df, fs_regions, fs_df):
     """"
-    annotate the regions with the features that overlap with it
+    annotate each region with the features that overlap with it
     # based on eccDNA pipeline.pipelines.annotate_dysgu_ouptut
     :param regions: dict of the df split by chromosome
     :param rep_regions: repeats regions dict

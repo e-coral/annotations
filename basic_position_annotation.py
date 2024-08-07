@@ -5,7 +5,7 @@ import pandas
 import glob
 
 
-outdir = (Path(__file__).parent / 'other_capC').resolve()
+outdir = (Path(__file__).parent / '24062024').resolve()
 refs_dir = (Path(__file__).parent / 'annotate/ref_files').resolve()
 
 
@@ -27,7 +27,8 @@ def format_columns(df, orig_col_names):
     # drop the telomere and centromere columns that aren't needed in the final output
     df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'Centromere'])
 
-    # set values to strings to prevent trailing .0s
+    # remove nans and set values to strings to prevent trailing .0s
+    df.fillna('', inplace=True)
     df = df.astype(str)
 
     return df
@@ -39,7 +40,7 @@ def annotate_results():
     :return: annotated file
     """
     # for all the input files
-    for filename in refs_dir.glob(r'*100624.xlsx'):
+    for filename in refs_dir.glob(r'*KS.xlsx'):
         # generate the relevant output file name
         outname = f"basic_annotated_{filename.stem}.xlsx"
 
@@ -59,6 +60,7 @@ def annotate_results():
 
                     # calculate the distance between the region and the nearest telomere
                     res = annotate.calculate_distances_to_telomeres(s)
+                    # print(res.head())
 
                     # annotate the genes, fragile sites, repeats and gene sizes
                     regions_df = annotate.annotate_overlaps(res)
