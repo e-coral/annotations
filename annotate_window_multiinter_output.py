@@ -3,7 +3,7 @@ from pathlib import Path
 from annotate import annotate
 import pandas
 import glob
-
+import numpy as np
 
 outdir = (Path(__file__).parent / 'multiinter_output').resolve()
 refs_dir = (Path(__file__).parent / 'annotate/ref_files').resolve()
@@ -24,11 +24,14 @@ def format_columns(df, orig_col_names):
     # rename the columns accordingly
     df.columns = orig_col_names
 
+    df['any_fragile?'] = np.where(df['fragile_sites'] == "", "n", "y")
+    df['any_repeats?'] = np.where(df['repeats'] == "", "n", "y")
+
     # drop the telomere and centromere columns that aren't needed in the final output
-    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'Centromere'])
+    new_df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'Centromere', 'fragile_sites', 'repeats'])
 
     # set values to strings to prevent trailing .0s
-    df = df.astype(str)
+    df = new_df.astype(str)
 
     return df
 
@@ -38,7 +41,7 @@ def annotate_results():
     read in the file, add the annotations, and output the annotated file
     :return: annotated file
     """
-    for infile in glob.glob('C:/Users/ec339/Downloads/new_windows/window_analysis/multiintersects/mi_results/*'):
+    for infile in glob.glob('C:/Users/ec339/Downloads/capped_with_corrections/for_annotating/*'):
         outname = f"annotated_{os.path.basename(infile)}"
         winsize = outname.split("_")[2].strip("kb")
         if winsize.endswith("m"):
@@ -74,11 +77,11 @@ def annotate_results():
         final = format_columns(regions_df, orig_columns)
 
         # split out the genes into separate columns, if preferred
-        final = annotate.split_multiple_genes(final)  # not preferred for in_both!
+        # final = annotate.split_multiple_genes(final)  # not preferred for in_both!
 
         # write output file
-        final.to_csv(os.path.join(outdir, f"with_gene_positions_{outname}-exploded.csv"), index=False)
-        # final.to_csv(os.path.join(outdir, f"with_gene_positions_{outname}.csv"), index=False)
+        # final.to_csv(os.path.join(outdir, f"{outname}-exploded.csv"), index=False)
+        final.to_csv(os.path.join(outdir, f"only_censat_{outname}.csv"), index=False)
 
 
 if __name__ == '__main__':

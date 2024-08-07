@@ -40,7 +40,7 @@ Jan15th, using the following settings:
 https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/annotation/chm13v2.0_censat_v2.0.bed
 and bedtools merge was used to generate single centromere regions for each chr
 # bedtools merge -i chm13v2.0_censat_v2.0.bed > censat_merged.bed
-chrY has loads of entries and didn't merge, so checked in __ and added manually
+chrY has loads of entries and didn't merge, so checked and added manually
 
 ^ not really used though, in favour of...
 

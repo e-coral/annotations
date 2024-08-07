@@ -16,7 +16,8 @@ centromeres_file = 'centromeres.csv'
 ensembl_genes = 'ensembl_IDs_to_gene_names.csv'
 
 # for region annotations, in addition to genes_file above
-reps_file = 'chm13v2.0_rmsk.bed'
+# reps_file = 'chm13v2.0_rmsk.bed'
+reps_file = 'censat.bed'
 fs_file = 'all_fragile_sites_positions.tsv'
 
 # set the df printing width to allow viewing all columns
@@ -450,7 +451,7 @@ def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df, posend=None):
                     fs.append(fs_df.iloc[item[2]].fragile_site)
 
         except KeyError:
-            print(f"No fragile sites annotations available for {chrom}.")
+            print(f"No fragile sites annotations available for {chrom}:{pos}-{posend}.")
 
     # join the function list (even if empty) into a comma-separated string and add it to the annotations list
     f_sites.append(", ".join(fs))
@@ -492,8 +493,11 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                     gtd.append(relevant_data["g-t_distance"])
                     gene_pos.append(f"{relevant_data['seqid']}:{relevant_data['start']}-{relevant_data['end']}")
                     # extract the gene name from the attributes field
-                    atts = relevant_data.attributes
+                    atts = relevant_data["attributes"]
+                    # print(atts)
                     if match := re.search(r'.*;gene_name=(.*?);.*', atts):
+                        # print(atts)
+                        # print(match.group(1))
                         gene_name.append(match.group(1))
                     else:
                         gene_name.append("")
@@ -640,16 +644,17 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
     annotate each region with the features that overlap with it
     # based on eccDNA pipeline.pipelines.annotate_dysgu_ouptut
     :param regions: dict of the df split by chromosome
-    :param rep_regions: repeats regions dict
+    :param rep_regions: repeats regions NCLS
     :param rep_df: df of rep regions
-    :param gene_regions: gene regions dict
+    :param gene_regions: gene regions NCLS
     :param gene_df: df of gene regions
-    :param fs_regions: fs regions dict
+    :param fs_regions: fs regions NCLS
     :param fs_df: df of fs regions
-    :return: annotations within the dict
+    :return: annotations within the 'regions' dict
     """
+    # for each chromosome in the input data
     for chrom, v in regions.items():
-        # initialise the lists of annotations
+        # initialise the lists in which to record annotations
         repeats = []
         f_sites = []
         genes = []
@@ -661,6 +666,7 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
             # get the start and end positions for the region
             start_pos = int(r['start'])
             end_pos = int(r['end'])
+            # print(start_pos, end_pos)
             repeats = find_reps_overlaps(chrom, start_pos, repeats, rep_regions, rep_df, posend=end_pos)
             f_sites = find_fs_overlaps(chrom, start_pos, f_sites, fs_regions, fs_df, posend=end_pos)
             genes, gene_lengths, gtd, gene_positions = find_gene_overlaps(chrom, start_pos, genes, gene_regions, gene_df, gene_lengths, gtd, gene_positions, posend=end_pos)
@@ -745,7 +751,7 @@ def annotate_existing_genes(df, column_name):
 
 def get_annotation_regions(df):
     """
-    get the NCLS for the regions relating to the annotations
+    get the NCLS for the regions provided in the annotations resources
     :param pandas.DataFrame df: annotation data df
     :return: dict of NCLS for the annotation type, for each chromosome
     """
@@ -790,15 +796,10 @@ def annotate_overlaps(df):
     # create the NCLSs for the repeats, genes and fragile sites
     reps_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, genes_df, fs_df)
 
-    # print(type(df["seqid"][3]))
-    # create the NCLS for the regions of interest
+    # split the regions to be annotated by chr
     regions = get_regions_per_chr(df)
-    # for k in regions.keys():
-    #     print(f"{k}, {type(k)}")
-    # print(type(df["seqid"][3]))
-    # exit()
 
-    # find the overlaps between the features and regions of interest
+    # find the overlaps between the features (NCLSs) and regions (list of dfs) to perform annotations
     anns = find_overlapping_features(regions, reps_regions, reps_df, genes_regions, genes_df, fs_regions, fs_df)
 
     return anns

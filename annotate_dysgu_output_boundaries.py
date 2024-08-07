@@ -50,36 +50,34 @@ def annotate_results():
         dysgu_df = pandas.read_csv(filename, sep="\t", header=0)
 
         if not dysgu_df.empty:
-            # rename the columns to the expected dysgu output column names
-            dysgu_df.columns = ['chrA', 'posA', 'chrB', 'posB']
-
-            # split into two datasets, with required headers
-            a_data = dysgu_df[['chrA', 'posA']]
-            a_data.columns = ['seqid', 'start']
-
-            b_data = dysgu_df[['chrB', 'posB']]
-            b_data.columns = ['seqid', 'start']
+            # rename the columns to use the A boundary for analysis, and add an end column for compatibility
+            dysgu_df.columns = ['seqid', 'start', 'chrB', 'posB']
+            dysgu_df['end'] = dysgu_df['start'] + 1
 
             # annotate distances
-            dysgu_data = annotate.calculate_distances_to_telomeres(a_data)
-
-            # annotate
+            dysgu_data = annotate.calculate_distances_to_telomeres(dysgu_df)
+            # print(dysgu_data.head())
             res = annotate.annotate_overlaps(dysgu_data)
+            print(res.head())
 
             # reformat the final df to match the input
-            a_final = format_columns(res, ['chr', 'pos'])
-
-            dysgu_data = annotate.calculate_distances_to_telomeres(b_data)
-            # annotate
-            res = annotate.annotate_overlaps(dysgu_data)
-
-            # reformat the final df to match the input
-            b_final = format_columns(res, ['chr', 'pos'])
+            a_final = format_columns(res, ['chr', 'start', 'chrB', 'posB', 'end'])
 
             # create the output file
             with (pandas.ExcelWriter(os.path.join(outdir, a_outname)) as writer):
                 # write output file
                 a_final.to_excel(writer, index=False)
+
+            # rename to use B data
+            dysgu_df.columns = ['chrA', 'posA', 'seqid', 'end', 'start']
+            dysgu_df['start'] = dysgu_df['end'] - 1
+
+            # annotate
+            dysgu_data = annotate.calculate_distances_to_telomeres(dysgu_df)
+            res = annotate.annotate_overlaps(dysgu_data)
+
+            # reformat the final df to match the input
+            b_final = format_columns(res, ['chrA', 'posA', 'chr', 'end', 'start'])
 
             # create the output file
             with (pandas.ExcelWriter(os.path.join(outdir, b_outname)) as writer):
