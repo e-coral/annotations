@@ -1,4 +1,4 @@
-Emmon Croot, 11th Jan 2024
+Emmon Croot, Jan 2024
 
 @ The telomeres bed file was obtained from
 https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/annotation/chm13v2.0_telomere.bed,
@@ -40,9 +40,9 @@ Jan15th, using the following settings:
 https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/annotation/chm13v2.0_censat_v2.0.bed
 and bedtools merge was used to generate single centromere regions for each chr
 # bedtools merge -i chm13v2.0_censat_v2.0.bed > censat_merged.bed
-chrY has loads of entries and didn't merge, so checked and added manually
+chrY didn't merge, so those entries were checked and added manually
 
-^ not really used though, in favour of...
+^ not used much though, in favour of...
 
 @ the ideogram file was downloaded from the UCSC Table Browser (24th Jan 2024) to cytobands.tsv, using the settings:
 
@@ -56,8 +56,6 @@ chrY has loads of entries and didn't merge, so checked and added manually
     file type: plain text
 
 and centromeres were extracted using get_centromeres.py
-
-
 
 ########################################################################################################################
 In brief, the script gene_tel_distance performs the following:

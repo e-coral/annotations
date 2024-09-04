@@ -1,9 +1,7 @@
 import os
 from pathlib import Path
-from annotate import annotate
+from src.annotate import annotate
 import pandas
-import glob
-
 
 outdir = (Path(__file__).parent / '24062024').resolve()
 refs_dir = (Path(__file__).parent / 'annotate/ref_files').resolve()

@@ -1,0 +1,6 @@
+# Emmon Croot 2024
+
+The files in this directory are some of those used to annotate various bed-like formats of input file with various
+required annotations, with output columns as requested for various purposes.
+They may be used directly for other annotations where appropriate, but are more likely to be used as a basis for new
+scripts handling slightly different input and/or output columns.

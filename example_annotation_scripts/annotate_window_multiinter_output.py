@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from annotate import annotate
+from src.annotate import annotate
 import pandas
 import glob
 import numpy as np

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from annotate import annotate
+from src.annotate import annotate
 import pandas
 
 
@@ -42,7 +42,7 @@ def annotate_kasseq_results():
         print(filename)
 
         # create the output file name
-        outname = f"annotated_{filename.stem}"
+        outname = f"pytest_annotated_{filename.stem}"
 
         # read in the data
         res = pandas.read_csv(filename, header=0)

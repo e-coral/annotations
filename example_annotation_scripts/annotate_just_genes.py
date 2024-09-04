@@ -4,8 +4,7 @@ import pandas
 import glob
 from pathlib import Path
 import os
-from annotate import annotate
-
+from src.annotate import annotate
 
 outdir = (Path(__file__).parent / 'default_output').resolve()
 
