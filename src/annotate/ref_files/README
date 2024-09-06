@@ -40,9 +40,7 @@ Jan15th, using the following settings:
 https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/annotation/chm13v2.0_censat_v2.0.bed
 and bedtools merge was used to generate single centromere regions for each chr
 # bedtools merge -i chm13v2.0_censat_v2.0.bed > censat_merged.bed
-chrY didn't merge, so those entries were checked and added manually
-
-^ not used much though, in favour of...
+chrY entries were checked and added manually
 
 @ the ideogram file was downloaded from the UCSC Table Browser (24th Jan 2024) to cytobands.tsv, using the settings:
 

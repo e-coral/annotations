@@ -6,9 +6,8 @@ import re
 
 # initialise relevant paths
 refs_dir = (Path(__file__).parent / 'ref_files').resolve()
-outdir = (Path(__file__).parent.parent / 'default_output').resolve()
+outdir = (Path(__file__).parent.parent.parent / 'default_output').resolve()
 
-input_file = 'GENE_LISTS_100124.xlsx'
 genes_file = 'chm13v2.0_RefSeq_Liftoff_genes_only.csv'
 extras = 'CAT_liftoff_from_table_browser.csv'
 nontels_file = 'non-telomere_regions.bed'
@@ -895,13 +894,14 @@ def reformat_for_output(df):
     :param df: df of genes and annotations
     :return: reformatted df
     """
+    # print(df.columns)
     # keep only relevant info
     if "gene_positions" in df.columns:
         df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
-                 'gene_length', "g-t_distance", "gene_positions", 'full_gene_loc']]
+                 'gene_length', "reg-tel_distance", "gene_positions", 'full_gene_loc']]
     else:
         df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
-                 'gene_length', "g-t_distance", "full_gene_loc", 'full_gene_loc']]
+                 'gene_length', "reg-tel_distance", "full_gene_loc", 'full_gene_loc']]
 
     # rename columns
     df.columns = ['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start',
@@ -910,93 +910,183 @@ def reformat_for_output(df):
     return df
 
 
-def output_full_csv(df, outname):
+def output_full_csv(df, infile, outname=None, output_dir=outdir):
     """
     output the df as a single csv file
+    :param infile: path to input file
     :param df: df of genes and annotations
+    :param output_dir: output directory (default, or overwritten by function call)
+    :param outname: output file name
     :return: output file
     """
+    # make the full outfile path
+    if outname:
+        outfile = os.path.join(outdir, outname)
+    else:
+        outfile = os.path.join(output_dir, f'annotated-{Path(infile).stem}.csv')
+
     # output the df to csv
-    df.to_csv(os.path.join(outdir, outname), index=False)
+    df.to_csv(outfile, index=False)
 
 
-def recreate_multisheet_excel_doc(df, outname):
+def annotate_original_excel_doc(df, infile, outname=None, output_dir=outdir):
     """
-    organise and rename the columns of the annotated df, and output as a single csv file
+    merge the new annotation data with the existing data in the input file, and output
+    :param output_dir: path to the output directory (default, or overwritten by function call)
     :param df: df of genes and annotations
+    :param infile: input filepath
+    :param outname: output file name
     :return: output file
     """
-    # read the file in
-    in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
+    # read the file in, and check it's an excel doc
+    try:
+        # read in the file as excel
+        in_data = pandas.read_excel(infile, sheet_name=None)
 
-    with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
-        for _, s in in_genes.items():
-            s = s.dropna()
-            s_df = pandas.DataFrame(s.values, columns=['Orig_gene'])
-            tmp_df = pandas.merge(s_df, df, how='left', on='Orig_gene')
-            # print(tmp_df.columns)
+    except ValueError:
+        print("Cannot output an annotated version of original excel file, because the original file was in csv format")
+        exit()
 
-            # reorder again
-            tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End',
-                             'Gene_length', 'Distance_to_telomere', "Gene_positions", 'Gene_loc']]
+    # make the full outfile path
+    if outname:
+        outfile = os.path.join(output_dir, outname)
+    else:
+        outfile = os.path.join(output_dir, f'annotated-{Path(infile).stem}.xlsx')
 
-            # print(tmp_df.head())
-            tmp_df.to_excel(writer, sheet_name=s.name, index=False)
+    # create and write to the output file
+    with pandas.ExcelWriter(outfile) as writer:
+        # for each sheet
+        for sname, s in in_data.items():
+            if not s.empty:
+                # drop blank cells to allow for merging
+                try:
+                    s_df = s[['Gene']]
 
+                except ValueError:
+                    s_df = s[['Orig_Gene']]
 
-def recreate_manually_updated_excel_doc(df, outname):
-    """
-    organise and rename the columns of the annotated df, and output as a single csv file
-    :param df: df of genes and annotations
-    :return: output file
-    """
-    # read the file in
-    in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
-    # in_genes = pandas.read_excel('C:/Users/ec339/Downloads/ECKL_ALLGENES_SIZES_REPLETE_190124.xlsx', sheet_name=None)
-
-    with pandas.ExcelWriter(os.path.join(outdir, outname)) as writer:
-        for sname, s in in_genes.items():
-            if not s.empty and not sname == "Mean gene lengths":
-                # print(sname, s.columns)
-                # if "Gene" in s.columns:
-                #     s_df = s[["Gene"]]
-                # else:
-                #     s_df = s[["Orig_Gene"]]
-                s_df = s[["Gene"]]
+                # drop blank cells and rename the gene column, for easier merging
                 s_df = s_df.dropna()
                 s_df.columns = ["Orig_gene"]
+                # merge the new (annotation) data with the original data
                 tmp_df = pandas.merge(s_df, df, how='left', on='Orig_gene')
-                # print(tmp_df.columns)
 
                 # reorder again
-                tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End', 'Gene_length', 'Distance_to_telomere', "Gene_positions", 'Gene_loc']]
+                tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End',
+                                 'Gene_length', 'Distance_to_telomere', "Gene_positions", 'Gene_loc']]
 
-                # print(tmp_df.head())
+                # write the sheet to the workbook
                 tmp_df.to_excel(writer, sheet_name=sname, index=False)
+            else:
+                blank = pandas.DataFrame()
+                blank.to_excel(writer, sheet_name=sname, index=False)
+
+# def recreate_manually_updated_excel_doc(df, infile, outname=None, out_path=outdir):
+#     """
+#     maintain the columns of the annotated df, and output as a single csv file
+#     :param df: df of genes and annotations
+#     :param infile: input filepath
+#     :param outname: output file name
+#     :return: output file
+#     """
+#     # read the file in
+#     try:
+#         # read in the file as excel
+#         in_data = pandas.read_excel(infile, sheet_name=None)
+#
+#     except ValueError:
+#         print("Cannot output an annotated version of original excel file, because the original file was in csv format")
+#         exit()
+#
+#     # make the full outfile path
+#     if outname:
+#         outfile = os.path.join(out_path, outname)
+#     else:
+#         outfile = os.path.join(out_path, f'annotated-{os.path.basename(infile)}')
+#
+#     # create and write to the output file
+#     with pandas.ExcelWriter(outfile) as writer:
+#         # for each of the original, populated sheets
+#         for sname, s in in_data.items():
+#             if not s.empty and not sname == "Mean gene lengths":
+#                 # drop empty cells to allow merging with the new df of annotated genes
+#                 s_df = s[["Gene"]]
+#                 s_df = s_df.dropna()
+#                 s_df.columns = ["Orig_gene"]
+#
+#                 # merge the new, annotated data with the original data
+#                 tmp_df = pandas.merge(s_df, df, how='left', on='Orig_gene')
+#
+#                 # reorder columns
+#                 tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start',
+#                                  'End', 'Gene_length', 'Distance_to_telomere', "Gene_positions", 'Gene_loc']]
+#
+#                 # write the sheet
+#                 tmp_df.to_excel(writer, sheet_name=sname, index=False)
 
 
-def input_file_to_dataframe(infilepath=None):
+def find_genes_in_df(df, genes, sheetname="input file"):
     """
-    Read in the input file and convert it into a df
-    :param infilepath: path to input file
-    :return: df containing input file gene names
+    extract the genes from the input file
+    :param df: automatic dataframe from reading in csv/excel
+    :param genes: list of gene names (empty at first)
+    :param sheetname: string name of sheet, if input has multiple sheets
+    :return: list of genes from the data
     """
-    if infilepath:
-        in_genes = pandas.read_excel(infilepath)
+    if "Gene" in df.columns:
+        genes.append(df['Gene'])
+    elif "gene" in df.columns:
+        genes.append(df['gene'])
+    elif "Orig_Gene" in df.columns:
+        genes.append(df['Orig_Gene'])
+    elif "Orig_gene" in df.columns:
+        genes.append(df['Orig_gene'])
+    elif "orig_gene" in df.columns:
+        genes.append(df['orig_gene'])
+    elif "Alt_Gene" in df.columns:
+        genes.append(df['Alt_Gene'])
+    elif "Alt_gene" in df.columns:
+        genes.append(df['Alt_gene'])
+    elif "alt_gene" in df.columns:
+        genes.append(df['alt_gene'])
     else:
-        # read the file in, and add column names for ensembl genes
-        in_genes = pandas.read_excel(os.path.join(refs_dir, input_file))
+        print(f"Warning: no relevant genes column identified in {sheetname}. "
+              f"The sheet will be ignored. Please check whether this is correct behaviour.")
 
-    # print(in_genes)
+    return genes
 
-    # convert the excel file values into a single, unique list of gene names
-    unique_genes = list(set([y.strip() for x in in_genes.values.tolist() for y in x if pandas.notna(y)]))
+
+def input_file_to_genes_df(infilepath):
+    """
+    Read in the input file and convert it into a df containing only unique input genes
+    :param infilepath: path to input file
+    :return: df containing gene names from the input file
+    """
+    genes = []
+
+    try:
+        # read in the file as excel
+        in_data = pandas.read_excel(infilepath, sheet_name=None)
+        # for each sheet, extract the genes from a relevant genes column, in order of preference
+        for sheetname, df in in_data.items():
+            if not df.empty:
+                genes = find_genes_in_df(df, genes, sheetname)
+
+    except ValueError:
+        in_data = pandas.read_csv(infilepath)
+        genes = find_genes_in_df(in_data, genes)
+
+    # if genes is a list of lists, then concatenate it. Else, skip.
+    try:
+        genes = pandas.concat(genes)
+    except ValueError:
+        pass
+
+    # make the single list of genes unique
+    unique_genes = list(set([y.strip() for y in genes if pandas.notna(y)]))
 
     # use the unique genes to initialise a dataframe for output, and strip spaces from the gene names just in case
     genes_df = pandas.DataFrame(unique_genes, columns=['orig_gene'])
-
-    # no longer required: strip on y above does the same
-    # genes_df = genes_df.map(lambda x: x.strip() if isinstance(x, str) else x)
 
     return genes_df
 
