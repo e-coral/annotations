@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from src.annotate import annotate
-import pandas
 
 
 outdir = (Path(__file__).parent.parent / 'example_output_files').resolve()
