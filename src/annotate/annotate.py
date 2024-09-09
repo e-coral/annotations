@@ -545,9 +545,11 @@ def format_output_columns(df, orig_col_names):
     :return: formatted dataframe of values and annotations
     """
     # add the names of the new columns to the names of the original columns
-    for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
-                'region-telomere_distance', 'repeats', 'fragile_sites',
-                'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
+    # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
+    #             'region-telomere_distance', 'repeats', 'fragile_sites',
+    #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
+    for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'reg-tel_distance', 'repeats', 'fragile_sites',
+                'genes', 'gene_lengths', 'gene-telomere_distances', 'gene_positions']:
         orig_col_names.append(col)
 
     # rename the columns accordingly
@@ -840,9 +842,56 @@ def calculate_gene_lengths(df):
     return df
 
 
+def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode=False, make_csv=False):
+    """
+    read in a standard input file, which contains chr, start and end of regions of interest at minimum,
+    annotate it, and write the annotations to an output file
+
+    :param infile: path to input file
+    :param outfile: path to output file
+    :param colname: name of the column containing the chromosomes, if not chrom
+    :param explode: whether to 'explode' the gene annotations to one per row
+                    (if false, all gene annotations will be written to one cell of the output file)
+    :param make_csv: whether to also write a csv file
+    :return: annotated file
+    """
+    # create the output file
+    with pandas.ExcelWriter(f"{outfile}.xlsx") as writer:
+        # read in the input file
+        infile = pandas.read_excel(infile, sheet_name=None)
+        # for each sheet in the input file (probably only one for each in this case)
+        for sname, s in infile.items():
+            # if the sheet is not empty
+            if not s.empty:
+                # store the original column names to be able to add them back in later
+                orig_columns = [col.strip() for col in s.columns]
+
+                # standardise the name of the chromosome column
+                s.rename(columns={colname: "seqid"}, inplace=True)
+
+                # calculate the distance between the region and the nearest telomere
+                s = calculate_distances_to_telomeres(s)
+
+                # annotate the genes, fragile sites, repeats and gene sizes
+                regions_df = annotate_overlaps(s)
+
+                # reformat the final df to match the input
+                final = format_output_columns(regions_df, orig_columns)
+
+                # split out the genes into separate columns, if preferred
+                if explode:
+                    final = split_multiple_genes(final)
+
+                # create output files
+                final.to_excel(writer, sheet_name=sname, index=False)
+
+                if make_csv:
+                    final.to_csv(f"{outfile}_{sname}.csv", index=False)
+
+
 def annotate_gene_location_data(infile, outfile, colname):
     """
-    read in a file containing chr:start-end formatted data
+    read in a file containing chr:start-end formatted data, annotate it, and write the annotations to an output file
     :param infile: full path to input file
     :param outfile: full path to output file
     :param str colname: name of column containing the relevant data
@@ -1161,7 +1210,7 @@ def split_multiple_genes(ann_df):
     :param ann_df: the dataframe containing all relevant annotations
     :return: edited df
     """
-    to_explode = ['genes', 'gene_lengths', 'g-t_distance', 'gene_positions']
+    to_explode = ['genes', 'gene_lengths', 'gene-telomere_distances', 'gene_positions']
     for heading in to_explode:
         ann_df[heading] = ann_df[heading].str.split(', ')
     ann_df = ann_df.explode(to_explode)
