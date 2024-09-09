@@ -842,6 +842,43 @@ def calculate_gene_lengths(df):
     return df
 
 
+def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=False):
+    """
+    read in an input file which contains at least chr, start and end columns for regions of interest,
+    annotate it, and write an output file containing annotated input regions
+    :param infile: path to input file
+    :param outfile: path to output file
+    :param colname: name of the column containin chromosomes, if not chrom
+    :param explode: whether to 'explode' the gene annotations to one per row
+    :return: annotated file
+    """
+    # read in the data
+    res = pandas.read_csv(infile, header=0)
+
+    # store the original column names to be able to add them back in later
+    orig_columns = [col.strip() for col in res.columns]
+
+    # rename the seqnames column, because some of the methods may be based on 'seqid'
+    res.rename(columns={colname: "seqid"}, inplace=True)
+
+    # calculate the distance between the region and the nearest telomere
+    res = calculate_distances_to_telomeres(res)
+
+    # annotate the genes, fragile sites, repeats and gene sizes
+    regions_df = annotate_overlaps(res)
+
+    # reformat the final df to match the input
+    final = format_output_columns(regions_df, orig_columns)
+
+    # split out the genes into separate columns, if preferred
+    if explode:
+        final = split_multiple_genes(final)
+        # write output file
+        final.to_csv(os.path.join(outdir, f"{outfile}-exploded.csv"), index=False)
+    else:
+        final.to_csv(os.path.join(outdir, f"{outfile}.csv"), index=False)
+
+
 def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode=False, make_csv=False):
     """
     read in a standard input file, which contains chr, start and end of regions of interest at minimum,
@@ -855,8 +892,13 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode
     :param make_csv: whether to also write a csv file
     :return: annotated file
     """
+    if explode:
+        ext = "-exploded"
+    else:
+        ext = ""
+
     # create the output file
-    with pandas.ExcelWriter(f"{outfile}.xlsx") as writer:
+    with pandas.ExcelWriter(f"{outfile}{ext}.xlsx") as writer:
         # read in the input file
         infile = pandas.read_excel(infile, sheet_name=None)
         # for each sheet in the input file (probably only one for each in this case)
@@ -886,7 +928,7 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode
                 final.to_excel(writer, sheet_name=sname, index=False)
 
                 if make_csv:
-                    final.to_csv(f"{outfile}_{sname}.csv", index=False)
+                    final.to_csv(f"{outfile}_{sname}{ext}.csv", index=False)
 
 
 def annotate_gene_location_data(infile, outfile, colname):
