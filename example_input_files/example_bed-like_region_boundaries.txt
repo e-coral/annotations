@@ -1,0 +1,5 @@
+bed chrA	bed posA	bed chrB	bed posB
+chr17	2867	chr6	110207249
+chr21	45083142	chr9	128719605
+chr21	45083185	chr1	113573204
+chr17	4711	chr10	57621258
