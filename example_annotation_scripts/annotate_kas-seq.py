@@ -1,3 +1,5 @@
+# irrelevant following cleanup; use annotate_csv instead
+
 import os
 from pathlib import Path
 from src.annotate import annotate
