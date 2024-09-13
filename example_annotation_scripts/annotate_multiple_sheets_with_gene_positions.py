@@ -1,3 +1,5 @@
+# no longer required; annotate just genes
+
 import os
 from pathlib import Path
 from src.annotate import annotate
