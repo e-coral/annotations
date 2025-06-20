@@ -1,3 +1,6 @@
+# keep the file collection and y/n sections of this - but move to the main annotations module
+
+
 import os
 from pathlib import Path
 from src.annotate import annotate
@@ -68,7 +71,7 @@ def annotate_results():
         res.rename(columns={"chrom": "seqid"}, inplace=True)
 
         # calculate the distance between the region and the nearest telomere
-        res = annotate.calculate_distances_to_telomeres(res)
+        res = annotate.calculate_distances_to_centromeres_and_telomeres(res)
 
         # annotate the genes, fragile sites, repeats and gene sizes
         regions_df = annotate.annotate_overlaps(res)

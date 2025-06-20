@@ -15,7 +15,7 @@ centromeres_file = 'centromeres.csv'
 ensembl_genes = 'ensembl_IDs_to_gene_names.csv'
 
 # for region annotations, in addition to genes_file above
-# reps_file = 'chm13v2.0_rmsk.bed'
+detailed_reps_file = 'chm13v2.0_rmsk.bed'
 reps_file = 'censat.bed'
 fs_file = 'all_fragile_sites_positions.tsv'
 
@@ -68,17 +68,21 @@ def get_centromere_positions():
     centromeres = pandas.read_csv(os.path.join(refs_dir, centromeres_file))
     # not yet sure what is useful, so TODO: parse file to get useful values
 
-    # subset the df to only the p arm, because there is a p and q entry for each chromosome
-    centromeres = centromeres[centromeres['ChrArm'] == "p"]
+    # because there is a p and q entry for each chromosome, keep only the start for p and only the end of q
+    pside = centromeres[centromeres['ChrArm'] == "p"]
+    pside = pside[['chrom', 'chromStart', 'chromEnd']]
 
-    # geta df of just 'centromere position' (as the end of the first centromere section) for each chromosome
-    centromeres = centromeres[['chrom', 'chromEnd']]
-    centromeres.columns = ["seqid", "Centromere"]
+    qside = centromeres[centromeres['ChrArm'] == "q"]
+    qside = qside[['chrom', 'chromEnd']]
+
+    # merge to get chr, start and end of each centromere
+    cen_df = pside.merge(qside, on='chrom')
+    cen_df.columns = ["seqid", "censtart", "Centromere", "cenend"]
 
     # convert position to int type to allow relevant operations and removal of trailing .0
-    centromeres = centromeres.astype({"Centromere": int})
+    cen_df = cen_df.astype({"censtart": int, "Centromere":int, "cenend": int})
 
-    return centromeres
+    return cen_df
 
 
 def get_gene_annotations():
@@ -116,7 +120,7 @@ def get_genes_df():
     """
     genes_df = pandas.read_csv(os.path.join(refs_dir, genes_file))
     genes_df = calculate_gene_lengths(genes_df)
-    genes_df = calculate_distances_to_telomeres(genes_df, keep_int=True, isgene=True)
+    genes_df = calculate_distances_to_centromeres_and_telomeres(genes_df, keep_int=True, isgene=True)
 
     return genes_df.astype({'gene_length': str, 'g-t_distance': str})
 
@@ -130,12 +134,13 @@ def get_fs_df():
     return fs_df
 
 
-def get_reps_df():
+def get_reps_df(reptype):
     """
     read the reps file into a relevant df
+    :param reptype: source of the repeats to collect (either censat or rmsk)
     :return: df of reps annotations
     """
-    reps_df = pandas.read_csv(os.path.join(refs_dir, reps_file), sep='\t',
+    reps_df = pandas.read_csv(os.path.join(refs_dir, reptype), sep='\t',
                               names=["chrom", "start", "end", "repeats", "score", "strand", "thickStart", "thickEnd",
                                      "reserved", "blockCount", "blockSizes", "blockStarts", "id", "description"])
 
@@ -355,7 +360,7 @@ def add_tel_positions(genes):
 
 def add_cent_positions(genes):
     """
-    Merge the genes and positions with the centromere positions
+    Merge the current df of genes and positions with the centromere positions
     :param genes: df of genes and their positions
     :return: merged df, containing genes, gene positions, and centromere positions
     """
@@ -458,7 +463,7 @@ def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df, posend=None):
     return f_sites
 
 
-def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes, gtds, gene_positions, posend=None):
+def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes, gtds, gcds, gene_positions, posend=None):
     """
     find positions of variant junctions that overlap with genes regions
     :param chrom: chromosome number of a variant
@@ -468,11 +473,13 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
     :param gene_df: dataframe containing gene data for the chromosome
     :param list gene_sizes: list of gene size annotations to be added to
     :param list gtds: list of gene-telomere distances to be added to
+    :param list gcds: list of gene-centromere distances to be added to
     :param list gene_positions: list of positions of genes to be added to
     :param posend: position of the end of the variant, if supplied (otherwise, set to be start pos + 1)
     :return: list of variant junction-overlapping gene sites regions for annotation
     """
     gtd = []
+    gcd = []
     gene_length = []
     gene_name = []
     gene_pos = []
@@ -490,6 +497,7 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                 if relevant_data.type == "gene":
                     gene_length.append(relevant_data.gene_length)
                     gtd.append(relevant_data["g-t_distance"])
+                    gcd.append(relevant_data["g-c_distance"])
                     gene_pos.append(f"{relevant_data['seqid']}:{relevant_data['start']}-{relevant_data['end']}")
                     # extract the gene name from the attributes field
                     atts = relevant_data["attributes"]
@@ -507,9 +515,10 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
     gene_sizes.append(", ".join(gene_length))
     gene_names.append(", ".join(gene_name))
     gtds.append(", ".join(gtd))
+    gcds.append(", ".join(gcd))
     gene_positions.append(", ".join(gene_pos))
 
-    return gene_names, gene_sizes, gtds, gene_positions
+    return gene_names, gene_sizes, gtds, gcds, gene_positions
 
 
 def add_annotation_column(df, data_list, column_name):
@@ -544,19 +553,21 @@ def format_output_columns(df, orig_col_names):
     :param orig_col_names: list of the original column names
     :return: formatted dataframe of values and annotations
     """
+    print(df.head())
     # add the names of the new columns to the names of the original columns
     # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
     #             'region-telomere_distance', 'repeats', 'fragile_sites',
     #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
-    for col in ['tChr', 'tStart', 'tEnd', 'Centromere', 'reg-tel_distance', 'repeats', 'fragile_sites',
-                'genes', 'gene_lengths', 'gene-telomere_distances', 'gene_positions']:
+    for col in ['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance',
+                'censat_repeats', 'rmsk_repeats', 'fragile_sites', 'genes', 'gene_lengths', 'gene-telomere_distances',
+                'gene_positions']:
         orig_col_names.append(col)
 
     # rename the columns accordingly
     df.columns = orig_col_names
 
     # drop the telomere and centromere columns that aren't needed in the final output
-    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'Centromere'])
+    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend'])
 
     # remove nans and set values to strings to prevent trailing .0s
     df.fillna('', inplace=True)
@@ -564,115 +575,43 @@ def format_output_columns(df, orig_col_names):
 
     return df
 
-# def find_overlapping_features_for_dysgu_output(dysgu_data):
-#     """
-#     annotate each of the regions/boundaries in the dysgu output with features that overlap them
-#     # the dysgu output has two chrom columns and two position columns representing variant boundaries
-#
-#     :return:
-#     """
-#
-#     # create the dfs of annotations and NCLSs of regions covered by features to annotate
-#     reps_df = get_reps_df()
-#     genes_df = get_genes_df()
-#     fs_df = get_fs_df()
-#
-#     # create the NCLSs for the repeats, genes and fragile sites
-#     rep_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, genes_df, fs_df)
-#
-#     # split the data by chromosome
-#     vars_by_chrom = {k: v for k, v in dysgu_data.groupby("chrA")}
-#
-#     # for each chromosome, annotate the positions of the variants
-#     for k, v in vars_by_chrom.items():
-#         # initialise the lists of annotations
-#         a_repeats = []
-#         b_repeats = []
-#         a_f_sites = []
-#         b_f_sites = []
-#         a_genes = []
-#         b_genes = []
-#         a_gene_lengths = []
-#         b_gene_lengths = []
-#         a_gtd = []
-#         b_gtd = []
-#         a_gene_positions = []
-#         b_gene_positions = []
-#
-#         for i, r in v.iterrows():  # i = df index (int), r is a df row
-#             # get the start position for chrA (chrA was used to split the df, so = k)
-#             pos_a = r.posA
-#
-#             # get the chr and start position for chrB
-#             chr_b = r.chrB
-#             pos_b = r.posB - 1  # shift it down 1 for functions to get the correct range later on
-#
-#             # if the boundaries around the variant are on the same chromosome, then use the provided positions
-#             # to identify overlaps
-#             if pos_b == k:
-#                 print(f"same chr: {pos_a} = {pos_b}")
-#                 end_pos = chr_b
-#                 start_pos = pos_a
-#
-#                 # find the annotations for the region
-#                 a_repeats = find_reps_overlaps(k, start_pos, a_repeats, rep_regions, reps_df, posend=end_pos)
-#                 a_f_sites = find_fs_overlaps(k, start_pos, a_f_sites, fs_regions, fs_df, posend=end_pos)
-#                 a_genes, a_gene_lengths, a_gtd, a_gene_positions = find_gene_overlaps(k, start_pos, a_genes,
-#                                                                                       genes_regions, genes_df,
-#                                                                                       a_gene_lengths, a_gtd,
-#                                                                                       a_gene_positions, posend=end_pos)
-#                 # add empty entries to the b lists
-#                 b_repeats.append("")
-#                 b_f_sites.append("")
-#                 b_genes.append("")
-#                 b_gene_lengths.append("")
-#                 b_gtd.append("")
-#                 b_gene_positions.append("")
-#
-#             # else, use the boundaries only, by using the given position +/-1
-#             else:
-#                 start_pos = pos_b - 1
-#                 end_pos = pos_a + 1
-#
-#                 a_repeats = find_reps_overlaps(k, pos_a, a_repeats, rep_regions, reps_df, posend=end_pos)
-#                 a_f_sites = find_fs_overlaps(k, pos_a, a_f_sites, fs_regions, fs_df, posend=end_pos)
-#                 a_genes, a_gene_lengths, a_gtd, a_gene_positions = find_gene_overlaps(k, start_pos, a_genes,
-#                                                                                       genes_regions, genes_df,
-#                                                                                       a_gene_lengths, a_gtd,
-#                                                                                       a_gene_positions, posend=end_pos)
-#
-#                 b_repeats = find_reps_overlaps(chr_b, start_pos, b_repeats, rep_regions, reps_df, posend=pos_b)
-#                 b_f_sites = find_fs_overlaps(chr_b, start_pos, b_f_sites, fs_regions, fs_df, posend=pos_b)
-#                 b_genes, b_gene_lengths, b_gtd, b_gene_positions = find_gene_overlaps(chr_b, start_pos, b_genes,
-#                                                                                       genes_regions,
-#                                                                                       genes_df, b_gene_lengths, b_gtd,
-#                                                                                       b_gene_positions, posend=pos_b)
-#         v = add_annotation_column(v, a_repeats, "posA_repeats")
-#         v = add_annotation_column(v, b_repeats, "posB_repeats")
-#         v = add_annotation_column(v, a_f_sites, "posA_fragileSites")
-#         v = add_annotation_column(v, b_f_sites, "posB_fragileSites")
-#
-#         v = add_annotation_column(v, a_genes, "posA_geneName")
-#         v = add_annotation_column(v, b_genes, "posB_geneName")
-#         v = add_annotation_column(v, a_gene_lengths, "posA_geneSize(bp)")
-#         v = add_annotation_column(v, b_gene_lengths, "posB_geneSize(bp)")
-#         v = add_annotation_column(v, a_gtd, "posA_gene-telomere_distances")
-#         v = add_annotation_column(v, b_gtd, "posB_gene-telomere_distances")
-#         v = add_annotation_column(v, a_gene_positions, "gene_positions")
-#         v = add_annotation_column(v, b_gene_positions, "gene_positions")
-#
-#     final_df = pandas.concat(vars_by_chrom, ignore_index=True)
-#
-#     return final_df
+
+def format_just_distance_output_columns(df, orig_col_names):
+    """
+    For the eventual output, drop irrelevant columns from the dataframe, and rename others to original names
+    :param df: dataframe of input values and annotations
+    :param orig_col_names: list of the original column names
+    :return: formatted dataframe of values and annotations
+    """
+    # add the names of the new columns to the names of the original columns
+    # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
+    #             'region-telomere_distance', 'repeats', 'fragile_sites',
+    #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
+    for col in ['tChr', 'tStart', 'tEnd', 'censtart' 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance']:
+        orig_col_names.append(col)
+
+    # rename the columns accordingly
+    df.columns = orig_col_names
+
+    # drop the telomere and centromere columns that aren't needed in the final output
+    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'censtart' 'Centromere', 'cenend'])
+
+    # remove nans and set values to strings to prevent trailing .0s
+    df.fillna('', inplace=True)
+    df = df.astype(str)
+
+    return df
 
 
-def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_df, fs_regions, fs_df):
+def find_overlapping_features(regions, rep_regions, rep_df, d_rep_regions, d_rep_df, gene_regions, gene_df, fs_regions, fs_df):
     """"
     annotate each region with the features that overlap with it
     # based on eccDNA pipeline.pipelines.annotate_dysgu_ouptut
     :param regions: dict of the df split by chromosome
     :param rep_regions: repeats regions NCLS
     :param rep_df: df of rep regions
+    :param d_rep_regions: df of repeatmasker rep regions
+    :param d_rep_df: df of repeatmasker rep regions
     :param gene_regions: gene regions NCLS
     :param gene_df: df of gene regions
     :param fs_regions: fs regions NCLS
@@ -683,10 +622,12 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
     for chrom, v in regions.items():
         # initialise the lists in which to record annotations
         repeats = []
+        d_repeats = []
         f_sites = []
         genes = []
         gene_lengths = []
         gtd = []
+        gcd = []
         gene_positions = []
 
         for i, r in v.iterrows():  # i = df index (int), r = df row
@@ -695,10 +636,14 @@ def find_overlapping_features(regions, rep_regions, rep_df, gene_regions, gene_d
             end_pos = int(r['end'])
             # print(start_pos, end_pos)
             repeats = find_reps_overlaps(chrom, start_pos, repeats, rep_regions, rep_df, posend=end_pos)
+            d_repeats = find_reps_overlaps(chrom, start_pos, d_repeats, d_rep_regions, d_rep_df, posend=end_pos)
             f_sites = find_fs_overlaps(chrom, start_pos, f_sites, fs_regions, fs_df, posend=end_pos)
-            genes, gene_lengths, gtd, gene_positions = find_gene_overlaps(chrom, start_pos, genes, gene_regions, gene_df, gene_lengths, gtd, gene_positions, posend=end_pos)
+            genes, gene_lengths, gtd, gcd, gene_positions = find_gene_overlaps(chrom, start_pos, genes, gene_regions,
+                                                                               gene_df, gene_lengths, gtd, gcd,
+                                                                               gene_positions, posend=end_pos)
 
-        v = add_annotation_column(v, repeats, "repeats")
+        v = add_annotation_column(v, repeats, "censat_repeats")
+        v = add_annotation_column(v, d_repeats, "rmsk_repeats")
         v = add_annotation_column(v, f_sites, "fragile_sites")
         v = add_annotation_column(v, genes, "genes")
         v = add_annotation_column(v, gene_lengths, "gene_lengths")
@@ -765,12 +710,12 @@ def annotate_existing_genes(df, column_name):
     # calculate the lengths and gene-telomere distances from the positions
     len_annotated = calculate_gene_lengths(pos_anns)
     # print(len_annotated.head())
-    tel_annotated = calculate_distances_to_telomeres(len_annotated, isgene=True)
+    tel_annotated = calculate_distances_to_centromeres_and_telomeres(len_annotated, isgene=True)
 
     # add the location format (dropped later if not needed, but adding it here makes other steps easier/more universal)
     full_df = add_gene_location(tel_annotated)
 
-    trimmed_df = full_df.drop(columns=["alt_gene", "seqid", "gene_name", "gene", "Chr", "Start", "End", "Centromere"])
+    trimmed_df = full_df.drop(columns=["alt_gene", "seqid", "gene_name", "gene", "Chr", "Start", "End", "censtart", "Centromere", "cenend"])
     trimmed_df.rename(columns={"start": "gene_start", "end": "gene_end"}, inplace=True)
 
     return trimmed_df
@@ -795,19 +740,21 @@ def get_annotation_regions(df):
     return regions
 
 
-def make_annotation_ncls(reps_df, genes_df, fs_df):
+def make_annotation_ncls(reps_df, detailed_reps_df, genes_df, fs_df):
     """
     create the NCLS objects for annotations
-    :param pandas.DataFrame reps_df: annotation data df
-    :param pandas.DataFrame genes_df: annotation data df
-    :param pandas.DataFrame fs_df: annotation data df
+    :param pandas.DataFrame reps_df: censat annotation data df
+    :param pandas.DataFrame detailed_reps_df: repeatmasker annotation data df
+    :param pandas.DataFrame genes_df: genes annotation data df
+    :param pandas.DataFrame fs_df: fragile site annotation data df
     :return: the NCLS objects for annotations
     """
     reps_regions = get_annotation_regions(reps_df)
+    detailed_reps_regions = get_annotation_regions(reps_df)
     genes_regions = get_annotation_regions(genes_df)
     fs_regions = get_annotation_regions(fs_df)
 
-    return reps_regions, genes_regions, fs_regions
+    return reps_regions, detailed_reps_regions, genes_regions, fs_regions
 
 
 def annotate_overlaps(df):
@@ -816,18 +763,20 @@ def annotate_overlaps(df):
     :param df: df derived from input
     :return: same df containing annotations
     """
-    reps_df = get_reps_df()
+    reps_df = get_reps_df(reps_file)
+    d_reps_df = get_reps_df(detailed_reps_file)
     genes_df = get_genes_df()
     fs_df = get_fs_df()
 
     # create the NCLSs for the repeats, genes and fragile sites
-    reps_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, genes_df, fs_df)
+    reps_regions, d_reps_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, d_reps_df, genes_df, fs_df)
 
     # split the regions to be annotated by chr
     regions = get_regions_per_chr(df)
 
     # find the overlaps between the features (NCLSs) and regions (list of dfs) to perform annotations
-    anns = find_overlapping_features(regions, reps_regions, reps_df, genes_regions, genes_df, fs_regions, fs_df)
+    anns = find_overlapping_features(regions, reps_regions, reps_df, d_reps_regions, d_reps_df, genes_regions,
+                                     genes_df, fs_regions, fs_df)
 
     return anns
 
@@ -862,7 +811,7 @@ def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=F
     res.rename(columns={colname: "seqid"}, inplace=True)
 
     # calculate the distance between the region and the nearest telomere
-    res = calculate_distances_to_telomeres(res)
+    res = calculate_distances_to_centromeres_and_telomeres(res)
 
     # annotate the genes, fragile sites, repeats and gene sizes
     regions_df = annotate_overlaps(res)
@@ -870,13 +819,19 @@ def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=F
     # reformat the final df to match the input
     final = format_output_columns(regions_df, orig_columns)
 
+    # ensure not '.csv.csv'
+    if outfile.endswith(".csv"):
+        extension = ""
+    else:
+        extension = ".csv"
+
     # split out the genes into separate columns, if preferred
     if explode:
         final = split_multiple_genes(final)
         # write output file
-        final.to_csv(os.path.join(outdir, f"{outfile}-exploded.csv"), index=False)
+        final.to_csv(os.path.join(outdir, f"{outfile}-exploded{extension}"), index=False)
     else:
-        final.to_csv(os.path.join(outdir, f"{outfile}.csv"), index=False)
+        final.to_csv(os.path.join(outdir, f"{outfile}{extension}"), index=False)
 
 
 def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode=False, make_csv=False):
@@ -912,7 +867,7 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode
                 s.rename(columns={colname: "seqid"}, inplace=True)
 
                 # calculate the distance between the region and the nearest telomere
-                s = calculate_distances_to_telomeres(s)
+                s = calculate_distances_to_centromeres_and_telomeres(s)
 
                 # annotate the genes, fragile sites, repeats and gene sizes
                 regions_df = annotate_overlaps(s)
@@ -956,7 +911,7 @@ def annotate_gene_location_data(infile, outfile, colname):
                 # add the relevant annotations
 
                 # calculate the distance between the region and the nearest telomere
-                res = calculate_distances_to_telomeres(res)
+                res = calculate_distances_to_centromeres_and_telomeres(res)
                 # print(res.head())
 
                 # annotate the genes, fragile sites, repeats and gene sizes
@@ -969,7 +924,7 @@ def annotate_gene_location_data(infile, outfile, colname):
                 final.to_excel(writer, sheet_name=sname, index=False)
 
 
-def calculate_distances_to_telomeres(df, keep_int=False, isgene=False):
+def calculate_distances_to_centromeres_and_telomeres(df, keep_int=False, isgene=False):
     """
     Calculate the distances between specified locations and the telomere on the same chromosome arm
     :param df: the dataframe containing the location info
@@ -979,8 +934,10 @@ def calculate_distances_to_telomeres(df, keep_int=False, isgene=False):
     """
     if isgene:
         colname = "g-t_distance"
+        cendist_name = 'g-c_distance'
     else:
         colname = "reg-tel_distance"
+        cendist_name = 'reg-cen_distance'
 
     # temporarily remove na values to allow successful conversion for calculations
     no_na_df = df.dropna(subset=['seqid'])
@@ -990,27 +947,32 @@ def calculate_distances_to_telomeres(df, keep_int=False, isgene=False):
     no_na_df = add_cent_positions(no_na_df)
 
     # temporarily remove na values to allow successful conversion for calculations
-    na_cents = no_na_df[no_na_df['Centromere'].isna()]
+    na_centromeres = no_na_df[no_na_df['Centromere'].isna()]
     no_na_df = no_na_df.dropna(subset=['Centromere'])
 
     # generate a df of the regions for which no annotations were found
-    not_annotated = pandas.concat([df[df['seqid'].isna()], na_cents])
+    not_annotated = pandas.concat([df[df['seqid'].isna()], na_centromeres])
 
     # convert all positions to int type to allow relevant operations and removal of trailing .0
     if "gene_length" in no_na_df.columns:
         no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int,
-                                    "gene_length": int, "Centromere": int})
+                                    "gene_length": int, "censtart": int, "Centromere": int, "cenend": int})
     else:
-        no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int, "Centromere": int})
+        no_na_df = no_na_df.astype({"start": int, "end": int, "Start": int, "End": int,"censtart": int,
+                                    "Centromere": int, "cenend": int})
 
     # if the region is on the p arm, calculate the distance to the p telomere. else, calculate to the q
     no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), colname] = no_na_df["start"] - no_na_df["Start"]
+    no_na_df.loc[(no_na_df["start"] < no_na_df["Centromere"]), cendist_name] = no_na_df["censtart"] - no_na_df["start"]
     no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), colname] = no_na_df["End"] - no_na_df["end"]
+    no_na_df.loc[(no_na_df["start"] > no_na_df["Centromere"]), cendist_name] = no_na_df["end"] - no_na_df["cenend"]
 
-    # to get rid of the trailing .0s in this column, convert to int AND to string, to prevent the .0s returning
+    # to get rid of the trailing .0s in the new columns, convert to int AND to string, to prevent the .0s returning
     # after re-addition of the temporarily removed entries
     no_na_df = no_na_df.astype({colname: int})
     no_na_df = no_na_df.astype({colname: str})
+    no_na_df = no_na_df.astype({cendist_name: int})
+    no_na_df = no_na_df.astype({cendist_name: str})
     # print(type(no_na_df["g-t_distance"][5]), type(no_na_df["start"][5]), type(no_na_df["end"][5]))
     # print(no_na_df.head())
 
@@ -1019,10 +981,10 @@ def calculate_distances_to_telomeres(df, keep_int=False, isgene=False):
 
         if "gene_length" in no_na_df.columns:
             no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "gene_length": str,
-                                        "Centromere": str, colname: str})
+                                        "censtart": str, "Centromere": str, "cenend": str, colname: str, cendist_name: str})
         else:
-            no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "Centromere": str,
-                                        colname: str})
+            no_na_df = no_na_df.astype({"start": str, "end": str, "Start": str, "End": str, "censtart": str,
+                                        "Centromere": str, "cenend": str, colname: str, cendist_name: str})
 
         not_annotated = not_annotated.astype(str)
 
@@ -1053,14 +1015,14 @@ def reformat_for_output(df):
     # keep only relevant info
     if "gene_positions" in df.columns:
         df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
-                 'gene_length', "reg-tel_distance", "gene_positions", 'full_gene_loc']]
+                 'gene_length', "reg-tel_distance", "reg-cen_distance", "gene_positions", 'full_gene_loc']]
     else:
         df = df[['orig_gene', 'alt_gene', 'gene', 'gene_name', 'seqid', 'start', 'end',
-                 'gene_length', "reg-tel_distance", "full_gene_loc", 'full_gene_loc']]
+                 'gene_length', "reg-tel_distance", "reg-cen_distance", "full_gene_loc", 'full_gene_loc']]
 
     # rename columns
     df.columns = ['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start',
-                  'End', 'Gene_length', "Distance_to_telomere", "Gene_positions", 'Gene_loc']
+                  'End', 'Gene_length', "Distance_to_telomere", "Distance_to_centromere", "Gene_positions", 'Gene_loc']
 
     return df
 
@@ -1128,56 +1090,13 @@ def annotate_original_excel_doc(df, infile, outname=None, output_dir=outdir):
 
                 # reorder again
                 tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start', 'End',
-                                 'Gene_length', 'Distance_to_telomere', "Gene_positions", 'Gene_loc']]
+                                 'Gene_length', 'Distance_to_telomere', "Distance_to_centromere", "Gene_positions", 'Gene_loc']]
 
                 # write the sheet to the workbook
                 tmp_df.to_excel(writer, sheet_name=sname, index=False)
             else:
                 blank = pandas.DataFrame()
                 blank.to_excel(writer, sheet_name=sname, index=False)
-
-# def recreate_manually_updated_excel_doc(df, infile, outname=None, out_path=outdir):
-#     """
-#     maintain the columns of the annotated df, and output as a single csv file
-#     :param df: df of genes and annotations
-#     :param infile: input filepath
-#     :param outname: output file name
-#     :return: output file
-#     """
-#     # read the file in
-#     try:
-#         # read in the file as excel
-#         in_data = pandas.read_excel(infile, sheet_name=None)
-#
-#     except ValueError:
-#         print("Cannot output an annotated version of original excel file, because the original file was in csv format")
-#         exit()
-#
-#     # make the full outfile path
-#     if outname:
-#         outfile = os.path.join(out_path, outname)
-#     else:
-#         outfile = os.path.join(out_path, f'annotated-{os.path.basename(infile)}')
-#
-#     # create and write to the output file
-#     with pandas.ExcelWriter(outfile) as writer:
-#         # for each of the original, populated sheets
-#         for sname, s in in_data.items():
-#             if not s.empty and not sname == "Mean gene lengths":
-#                 # drop empty cells to allow merging with the new df of annotated genes
-#                 s_df = s[["Gene"]]
-#                 s_df = s_df.dropna()
-#                 s_df.columns = ["Orig_gene"]
-#
-#                 # merge the new, annotated data with the original data
-#                 tmp_df = pandas.merge(s_df, df, how='left', on='Orig_gene')
-#
-#                 # reorder columns
-#                 tmp_df = tmp_df[['Orig_gene', 'Alt_gene', 'Annotation_gene', 'Annotation_gene2', 'Chr', 'Start',
-#                                  'End', 'Gene_length', 'Distance_to_telomere', "Gene_positions", 'Gene_loc']]
-#
-#                 # write the sheet
-#                 tmp_df.to_excel(writer, sheet_name=sname, index=False)
 
 
 def find_genes_in_df(df, genes, sheetname="input file"):
@@ -1252,174 +1171,10 @@ def split_multiple_genes(ann_df):
     :param ann_df: the dataframe containing all relevant annotations
     :return: edited df
     """
-    to_explode = ['genes', 'gene_lengths', 'gene-telomere_distances', 'gene_positions']
+    to_explode = ['genes', 'gene_lengths', 'gene-telomere_distances', 'gene-centromere_distances', 'gene_positions']
     for heading in to_explode:
         ann_df[heading] = ann_df[heading].str.split(', ')
     ann_df = ann_df.explode(to_explode)
 
     return ann_df
-
-
-
-
-
-#
-#
-# # print(len(genes_df))  # should be 11210
-# # print(genes_df.columns)
-#
-# # convert ensg IDs
-# # malformed biomart xml warning sometimes - skip if so
-# genes_df['alt_gene'] = genes_df['orig_gene'].apply(lambda x: ens_dict.get(x))
-# genes_df['alt_gene'] = ""
-#
-# genes_df['Gene'] = numpy.where(genes_df['alt_gene'], genes_df['alt_gene'], genes_df['orig_gene'])
-# # genes_df.to_csv(os.path.join(outdir, "intermediate_genesdf2.csv"), index=False)
-# # print(genes_df.head())
-# # print(len(genes_df))
-#
-# # in the gene annotations file, the gene name is hidden within the attributes column of the file
-# # therefore, extract this value into its own df column
-# # there are both gene and gene_name, which are almost identical - so, run with both
-# ann_genes["Gene"] = ann_genes["attributes"].str.extract(r'.*;gene_name=(.*?);.*').fillna('')
-# # ann_genes["Gene"] = ann_genes["attributes"].str.extract(r'.*;gene=(.*?);.*').fillna('')
-# # ann_genes.to_csv(os.path.join(outdir, "intermediate_anngenes_full.csv"), index=False)
-#
-# # ann_genes.to_csv(os.path.join(outdir, "anns_by_gene.csv"), index=False)
-# # ann_genes.to_csv(os.path.join(outdir, "anns_by_genename.csv"), index=False)
-# df = pandas.merge(genes_df, ann_genes, on=['Gene'], how='left')
-# # print(len(df))  # should be at least 11210 - though some have duplicates, and strip could/should assist the merge
-#
-#
-# # # there are an additional 57 rows after the merge, suggesting multiple entries for some gene names in ann_genes
-# # # find them and put them in an output file
-# duplicaterows = pandas.concat(g for _, g in df.groupby("Gene") if len(g) > 1)
-# # duplicaterows.to_csv(os.path.join(outdir, 'genes_with_multiple_entries_by_gene.csv'), index=False)
-# duplicaterows.to_csv(os.path.join(outdir, 'genes_with_multiple_entries_by_genename.csv'), index=False)
-# # # print(set(duplicaterows['Gene']))
-#
-# # ultimately ignore the duplicates for now; just get the distances for all the different positions
-#
-# # merge the dfs of gene annotations and telomere positions
-# three_df = pandas.merge(df, ann_tels, left_on=['seqid'], right_on=['Chr'], how='left')
-# # print(three_df.head())
-#
-# # remove the trailing .0s while preserving nan entries
-# # split the data into genes with and without positional info
-# no_na = three_df.dropna(subset=['seqid', 'Start'])
-# # print(len(no_na))  # should be at least 10575
-#
-# nan_df = three_df[three_df['seqid'].isna()]
-# nan_df = nan_df.dropna(axis=1)
-# # nan_df.to_csv(os.path.join(outdir, 'genes_not_in_refseq_liftoff_by_gene.csv'), index=False)
-# nan_df.to_csv(os.path.join(outdir, 'genes_not_in_refseq_liftoff_by_genename.csv'), index=False)
-# # print(len(nan_df))  # should be at most 691
-#
-# # for the genes not in refseq/liftoff, try using the CAT table file to identify positions
-# filled_gaps = pandas.merge(nan_df, extra_anns, how='left', on='Gene')
-#
-# # get the genes that match with name2 rather than with name2 (not many)
-# filled_alt = pandas.merge(nan_df, extra_anns, how='left', left_on='Gene', right_on='name')
-# filled_alt = filled_alt.dropna(subset=['seqid'])
-# filled_alt = filled_alt[["orig_gene", "alt_gene", "Gene_x", "seqid", "start", "end", "name"]]
-# filled_alt.columns = ['orig_gene', 'alt_gene', 'Gene', 'seqid', 'start', 'end', "name"]
-# filled_alt.to_csv(os.path.join(outdir, 'filled_alt.csv'))
-# # exit(filled_alt.columns)
-#
-# # assign the name as the alternative name
-# filled_gaps['alt_gene'] = filled_gaps['name']
-# print(filled_gaps.columns)
-#
-# # concatenate the dfs with different match columns
-# filled_gaps = pandas.concat([filled_gaps, filled_alt])
-# # merge the dfs of gene annotations and telomere positions
-# filled_gaps = pandas.merge(filled_gaps, ann_tels, left_on=['seqid'], right_on=['Chr'], how='left')
-#
-# # split the file into annotated and unannotated for further analysis and output
-# filled_gaps_no_na = filled_gaps.dropna(subset=['seqid', 'Start'])
-# not_found_in_any_files = filled_gaps[filled_gaps['seqid'].isna()]
-# # filled_gaps.to_csv(os.path.join(outdir, 'test_filled_gaps.csv'), index=False)
-# not_found_in_any_files.to_csv(os.path.join(outdir, 'genes_not_found_in_any_ref_files.csv'), index=False)
-#
-# # subset to only the useful columns
-# filled_gaps_no_na = filled_gaps_no_na[['orig_gene', 'alt_gene', 'Gene', 'seqid', 'start', 'end', "Start", "End"]]
-# no_na = no_na[['orig_gene', 'alt_gene', 'Gene', 'seqid', 'start', 'end', "Start", "End"]]
-# no_na = pandas.concat([filled_gaps_no_na, no_na])
-# print(no_na.columns)
-#
-# # convert the values, so they don't have .0 at the end
-# # print(no_na.dtypes)
-# no_na = no_na.astype({"start": int, "end": int, "Start": int, "End": int})
-#
-# # calculate the gene length
-# no_na['Gene_length'] = no_na['end'] - no_na['start']
-#
-# no_na['full_gene_loc'] = no_na.agg(lambda x: f"{x['seqid']}:{x['start']}-{x['end']}", axis=1)
-# # calculate the differences between the gene start/end ('start' and 'end' in lowercase) and positions where the
-# # telomeres begin ('Start' and 'End' in title case)
-# no_na['gs-cs'] = no_na['start'] - no_na['Start']
-# no_na['ge-cs'] = no_na['end'] - no_na['Start']
-# no_na['gs-ce'] = no_na['End'] - no_na['start']
-# no_na['ge-ce'] = no_na['End'] - no_na['end']
-# no_na['gene-telomere_distance'] = no_na[['gs-cs', 'ge-cs', 'gs-ce', 'ge-ce']].min(axis=1)
-# print(no_na.columns)
-#
-# # create the usual location string in a final column
-# no_na['full_gene_loc'] = no_na.agg(lambda x: f"{x['seqid']}:{x['start']}-{x['end']}", axis=1)
-#
-# # subset to useful columns
-# no_na = no_na[['orig_gene', 'alt_gene', 'Gene', 'seqid', 'start', 'end', 'Gene_length', "gene-telomere_distance", 'full_gene_loc']]
-# # rename columns
-# no_na.columns = ["Orig_Gene", "Alt_Gene", "Gene", "Chr", "Start", "End", 'Gene_length', "Distance_to_telomere", "Gene_loc"]
-#
-# # output to file (all genes)
-# # no_na.to_csv(os.path.join(outdir, 'genes_and_distances_by_gene.csv'), index=False)
-# no_na.to_csv(os.path.join(outdir, 'genes_and_distances_by_genename.csv'), index=False)
-#
-# # # output to file (for each list)
-# with pandas.ExcelWriter(os.path.join(outdir, "per-list_allgenes_and_distances_by_genename.xlsx")) as writer:
-# # with pandas.ExcelWriter(os.path.join(outdir, "per-list_allgenes_and_distances_by_gene")) as writer:
-#     for _, s in in_genes.items():
-#         s = s.dropna()
-#         # tmp_df = no_na[no_na['Gene'].isin(s)]  # this drops kate's genes if they aren't in the df
-#         s_df = pandas.DataFrame(s.values, columns=['Orig_Gene'])
-#         tmp_df = pandas.merge(s_df, no_na, how='left', on='Orig_Gene')
-#         # print(tmp_df.columns)
-#
-#         # reorder again
-#         tmp_df = tmp_df[['Orig_Gene', 'Alt_Gene', 'Gene', 'Chr', 'Start', 'End', 'Gene_length', 'Distance_to_telomere', 'Gene_loc']]
-#
-#         # print(tmp_df.head())
-#         tmp_df.to_excel(writer, sheet_name=s.name, index=False)
-#
-#
-#     # print(len(s))
-#     # list_genes = pandas.merge(s, no_na, how='left')
-#     # print(list_genes)
-
-# start = ann_tels.loc[ann_tels['Chr'] == 'chr1', 'Start'].values[0]
-# end = ann_tels
-
-# test1 = df['start'][2] - ann_tels.loc[ann_tels['Chr'] == df['seqid'][2], ['Start']]
-# df['gs-cs'] = df['start'] - ann_tels.loc[ann_tels['Chr'] == df['seqid'].values, 'Start']
-# print(test1)
-#
-# print(df.columns)
-
-# # make the gene annotations file usable, based on make_annotation_ncls in eccDNA pipelines
-# # initialise
-# regions = {}
-# # split by chromosomes
-# ann_genes_by_chrom = {k: v for k, v in ann_genes.groupby("seqid")}
-# print(type(ann_genes_by_chrom['chr1'].iloc[2]))
-# print(ann_genes_by_chrom['chr1'].iloc[2])
-# # for k, v in ann_genes_by_chrom.items():
-# #     regions[k] = NCLS(v.start.values, v.end.values, v.index.values)
-# # gene_regions = get_annotation_regions(self.gene_df)
-#
-#
-#
-# # print(ann_genes.columns)
-# # print(ann_tels)
-#
 

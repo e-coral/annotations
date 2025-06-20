@@ -22,7 +22,7 @@ for eachfile in glob.glob('C:/Users/ec339/Downloads/genes_to_annotate/*'):
                 genes = annotate.get_gene_annotations()
                 pos_anns = annotate.add_position_annotations(converted_ensgs, genes)
                 len_annotated = annotate.calculate_gene_lengths(pos_anns)
-                tel_annotated = annotate.calculate_distances_to_telomeres(len_annotated)
+                tel_annotated = annotate.calculate_distances_to_centromeres_and_telomeres(len_annotated)
                 df = annotate.add_gene_location(tel_annotated)
                 df = annotate.reformat_for_output(df)
                 print(df.head())

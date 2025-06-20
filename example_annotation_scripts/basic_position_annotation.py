@@ -57,7 +57,7 @@ def annotate_results():
                     s.rename(columns={"chrom": "seqid"}, inplace=True)
 
                     # calculate the distance between the region and the nearest telomere
-                    res = annotate.calculate_distances_to_telomeres(s)
+                    res = annotate.calculate_distances_to_centromeres_and_telomeres(s)
                     # print(res.head())
 
                     # annotate the genes, fragile sites, repeats and gene sizes

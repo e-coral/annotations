@@ -22,6 +22,7 @@ def annotate_results():
         # generate the relevant output file name
         a_outname = f"posA_basic_annotated_{filename.stem}.xlsx"
         b_outname = f"posB_basic_annotated_{filename.stem}.xlsx"
+        # print(filename)
 
         # read in the input file
         dysgu_df = pandas.read_csv(filename, sep="\t", header=0)
@@ -33,7 +34,7 @@ def annotate_results():
             dysgu_df['end'] = dysgu_df['start'] + 1
 
             # annotate A positions
-            dysgu_data = annotate.calculate_distances_to_telomeres(dysgu_df)
+            dysgu_data = annotate.calculate_distances_to_centromeres_and_telomeres(dysgu_df)
             res = annotate.annotate_overlaps(dysgu_data)
 
             # reformat the final df to match the input
@@ -50,7 +51,7 @@ def annotate_results():
             dysgu_df['start'] = dysgu_df['end'] - 1
 
             # annotate
-            dysgu_data = annotate.calculate_distances_to_telomeres(dysgu_df)
+            dysgu_data = annotate.calculate_distances_to_centromeres_and_telomeres(dysgu_df)
             res = annotate.annotate_overlaps(dysgu_data)
 
             # reformat the final df to match the input
