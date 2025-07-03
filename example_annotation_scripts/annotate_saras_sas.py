@@ -1,8 +1,6 @@
-# for annotating a list of genes in a single column in an excel file
+# for annotating a csv file containing information about supplementary alignments
 
 import pandas
-import glob
-from pathlib import Path
 import os
 from src.annotate import annotate
 
@@ -22,23 +20,20 @@ def additional_filtering(ann_file, filename):
 
     # filter to longer, more unique, higher apq reads not in repeat/centromere/telomere regions
     r_df = ann_df[ann_df['percentage_unique'] > 50]
-    print(len(r_df))
     r_df = r_df[r_df['unique'] == True]
-    print(len(r_df))
     r_df = r_df[r_df['centromeric'] == False]
     r_df = r_df[r_df['telomeric'] == False]
-    print(len(r_df))
     r_df = r_df[r_df['SA_length'] >= 200]
     r_df = r_df[r_df['mapq'] >= 50]
-    print(len(r_df))
-    # r_df = r_df[r_df['repeats'] == ]
-
-    # for rname in r_df.groupby('qname'):
-    #     print(rname)
 
     outname = os.path.join(mydir, f"filtered_annotated_{filename}")
     r_df.to_csv(outname, index=False)
-    print(len(set(r_df['qname'])))
+
+    qnames_list_outname = os.path.join(mydir, f"qnames_filtered_for_{filename}.txt")
+    qnames = set(r_df['qname'].tolist())
+    with open(qnames_list_outname, 'w') as outfile:
+        outfile.write("\n".join(qnames))
+
 
 def annotate_standard_csv():
     """
@@ -49,7 +44,7 @@ def annotate_standard_csv():
     for filename in os.listdir(mydir):
         # print(filename)
         # generate the relevant output file names and paths
-        outname = f"genes_annotated_{filename}"
+        outname = f"annotated_{filename}"
         infile = os.path.join(mydir, filename)
         outfile = os.path.join(mydir, outname)
 

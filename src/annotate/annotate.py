@@ -134,13 +134,13 @@ def get_fs_df():
     return fs_df
 
 
-def get_reps_df(reptype):
+def get_reps_df(repfile):
     """
     read the reps file into a relevant df
-    :param reptype: source of the repeats to collect (either censat or rmsk)
+    :param repfile: source of the repeats to collect (either censat or rmsk)
     :return: df of reps annotations
     """
-    reps_df = pandas.read_csv(os.path.join(refs_dir, reptype), sep='\t',
+    reps_df = pandas.read_csv(os.path.join(refs_dir, repfile), sep='\t',
                               names=["chrom", "start", "end", "repeats", "score", "strand", "thickStart", "thickEnd",
                                      "reserved", "blockCount", "blockSizes", "blockStarts", "id", "description"])
 
@@ -553,7 +553,6 @@ def format_output_columns(df, orig_col_names):
     :param orig_col_names: list of the original column names
     :return: formatted dataframe of values and annotations
     """
-    print(df.head())
     # add the names of the new columns to the names of the original columns
     # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
     #             'region-telomere_distance', 'repeats', 'fragile_sites',
@@ -750,7 +749,7 @@ def make_annotation_ncls(reps_df, detailed_reps_df, genes_df, fs_df):
     :return: the NCLS objects for annotations
     """
     reps_regions = get_annotation_regions(reps_df)
-    detailed_reps_regions = get_annotation_regions(reps_df)
+    detailed_reps_regions = get_annotation_regions(detailed_reps_df)
     genes_regions = get_annotation_regions(genes_df)
     fs_regions = get_annotation_regions(fs_df)
 
