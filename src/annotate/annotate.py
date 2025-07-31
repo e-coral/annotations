@@ -510,12 +510,15 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                         gene_name.append("")
 
     except KeyError as err:
-        print(f"No gene annotations available for {chrom}:{pos}-{posend}.")
+        print(f"{err}\nNo gene annotations available for {chrom}:{pos}-{posend}.")
 
     gene_sizes.append(", ".join(gene_length))
     gene_names.append(", ".join(gene_name))
     gtds.append(", ".join(gtd))
-    gcds.append(", ".join(gcd))
+    try:
+        gcds.append(", ".join(gcd))
+    except TypeError as err:
+        print(f"{err}\n{gcd}")
     gene_positions.append(", ".join(gene_pos))
 
     return gene_names, gene_sizes, gtds, gcds, gene_positions
@@ -833,7 +836,8 @@ def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=F
         final.to_csv(os.path.join(outdir, f"{outfile}{extension}"), index=False)
 
 
-def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode=False, make_csv=False):
+def annotate_standard_excel_input_file(infile, outfile, colname="chrom", startname="start", endname="end",
+                                       explode=False, make_csv=False):
     """
     read in a standard input file, which contains chr, start and end of regions of interest at minimum,
     annotate it, and write the annotations to an output file
@@ -841,6 +845,8 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode
     :param infile: path to input file
     :param outfile: path to output file
     :param colname: name of the column containing the chromosomes, if not chrom
+    :param startname: name of the start column
+    :param endname: name of the end column
     :param explode: whether to 'explode' the gene annotations to one per row
                     (if false, all gene annotations will be written to one cell of the output file)
     :param make_csv: whether to also write a csv file
@@ -862,8 +868,10 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", explode
                 # store the original column names to be able to add them back in later
                 orig_columns = [col.strip() for col in s.columns]
 
-                # standardise the name of the chromosome column
+                # standardise the names of the columns
                 s.rename(columns={colname: "seqid"}, inplace=True)
+                s.rename(columns={startname: "start"}, inplace=True)
+                s.rename(columns={endname: "end"}, inplace=True)
 
                 # calculate the distance between the region and the nearest telomere
                 s = calculate_distances_to_centromeres_and_telomeres(s)
