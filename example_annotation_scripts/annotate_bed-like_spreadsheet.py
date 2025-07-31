@@ -39,7 +39,7 @@ def annotate_spreadsheet_by_boundaries():
                     # s['end'] = s['posB'] if
 
                     if s['chrA'] == s['chrB']:
-                        print(f"{filename} only has single-crhomosome events")
+                        print(f"{filename} only has single-chromosome events")
                     else:
                         print(f"{filename} has some different chrs")
                 else:
