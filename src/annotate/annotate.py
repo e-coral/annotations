@@ -517,8 +517,11 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
     gtds.append(", ".join(gtd))
     try:
         gcds.append(", ".join(gcd))
-    except TypeError as err:
-        print(f"{err}\n{gcd}")
+    except TypeError:
+        # hack to deal with chromosomes that don't have centromeres
+        gcd_strings = [str(i) for i in gcd]
+        gcds.append(", ".join(gcd_strings))
+
     gene_positions.append(", ".join(gene_pos))
 
     return gene_names, gene_sizes, gtds, gcds, gene_positions
@@ -792,6 +795,38 @@ def calculate_gene_lengths(df):
     df['gene_length'] = df['end'] - df['start']
     return df
 
+def annotate_dataframe_output_excel(df, outfile, colname='chrom', explode=False):
+    """
+    for a supplied dataframe, annotate and return as excel
+    :param df: a dataframe with minimum columns chrom, start, end
+    :param outfile: full path to output file
+    :param colname: name of the chromosome column, if not chrom
+    :param explode: whether to explode data out to multiple rows (default False)
+    :return: excel file with annotated data
+    """
+    # store the original column names to be able to add them back in later
+    orig_columns = [col.strip() for col in df.columns]
+
+    # rename the seqnames column, because some of the methods may be based on 'seqid'
+    df.rename(columns={colname: "seqid"}, inplace=True)
+
+    # calculate the distance between the region and the nearest telomere
+    res = calculate_distances_to_centromeres_and_telomeres(df)
+
+    # annotate the genes, fragile sites, repeats and gene sizes
+    regions_df = annotate_overlaps(res)
+
+    # reformat the final df to match the input
+    final = format_output_columns(regions_df, orig_columns)
+
+    # split out the genes into separate columns, if preferred
+    if explode:
+        final = split_multiple_genes(final)
+
+    # create the output file
+    with pandas.ExcelWriter(f"{outfile}.xlsx") as writer:
+        final.to_excel(writer, sheet_name='sheet1', index=False)
+
 
 def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=False):
     """
@@ -799,7 +834,7 @@ def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=F
     annotate it, and write an output file containing annotated input regions
     :param infile: path to input file
     :param outfile: path to output file
-    :param colname: name of the column containin chromosomes, if not chrom
+    :param colname: name of the column containing chromosomes, if not chrom
     :param explode: whether to 'explode' the gene annotations to one per row
     :return: annotated file
     """
