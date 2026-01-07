@@ -559,20 +559,23 @@ def format_output_columns(df, orig_col_names):
     :param orig_col_names: list of the original column names
     :return: formatted dataframe of values and annotations
     """
-    # add the names of the new columns to the names of the original columns
-    # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
-    #             'region-telomere_distance', 'repeats', 'fragile_sites',
-    #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
-    for col in ['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance',
-                'censat_repeats', 'rmsk_repeats', 'fragile_sites', 'genes', 'gene_lengths', 'gene-telomere_distances',
-                'gene_positions']:
-        orig_col_names.append(col)
+    if orig_col_names:
+        # add the names of the new columns to the names of the original columns
+        # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
+        #             'region-telomere_distance', 'repeats', 'fragile_sites',
+        #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
+        for col in ['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance',
+                    'censat_repeats', 'rmsk_repeats', 'fragile_sites', 'genes', 'gene_lengths', 'gene-telomere_distances',
+                    'gene_positions']:
+            orig_col_names.append(col)
 
-    # rename the columns accordingly
-    df.columns = orig_col_names
+        # rename the columns accordingly
+        df.columns = orig_col_names
+        # drop the telomere and centromere columns that aren't needed in the final output
+        df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend'])
 
-    # drop the telomere and centromere columns that aren't needed in the final output
-    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend'])
+    else:
+        df = df.drop(columns=['Chr', 'Start', 'End', 'censtart', 'Centromere', 'cenend'])
 
     # remove nans and set values to strings to prevent trailing .0s
     df.fillna('', inplace=True)
@@ -592,14 +595,14 @@ def format_just_distance_output_columns(df, orig_col_names):
     # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
     #             'region-telomere_distance', 'repeats', 'fragile_sites',
     #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
-    for col in ['tChr', 'tStart', 'tEnd', 'censtart' 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance']:
+    for col in ['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance']:
         orig_col_names.append(col)
 
     # rename the columns accordingly
     df.columns = orig_col_names
 
     # drop the telomere and centromere columns that aren't needed in the final output
-    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'censtart' 'Centromere', 'cenend'])
+    df = df.drop(columns=['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend'])
 
     # remove nans and set values to strings to prevent trailing .0s
     df.fillna('', inplace=True)
@@ -859,6 +862,8 @@ def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=F
     # ensure not '.csv.csv'
     if outfile.endswith(".csv"):
         extension = ""
+    elif outfile.endswith(".tsv"):
+        extension = ""
     else:
         extension = ".csv"
 
@@ -872,7 +877,7 @@ def annotate_standard_csv_input_file(infile, outfile, colname="chrom", explode=F
 
 
 def annotate_standard_excel_input_file(infile, outfile, colname="chrom", startname="start", endname="end",
-                                       explode=False, make_csv=False):
+                                       explode=False, make_csv=False, headerin=True, headerout=True):
     """
     read in a standard input file, which contains chr, start and end of regions of interest at minimum,
     annotate it, and write the annotations to an output file
@@ -885,6 +890,8 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", startna
     :param explode: whether to 'explode' the gene annotations to one per row
                     (if false, all gene annotations will be written to one cell of the output file)
     :param make_csv: whether to also write a csv file
+    :param headerin: whether the input file has a header (default True)
+    :param headerout: whether the output file needs a header (default True)
     :return: annotated file
     """
     if explode:
@@ -892,21 +899,36 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", startna
     else:
         ext = ""
 
+    headerin = 0 if headerin else None
+
     # create the output file
     with pandas.ExcelWriter(f"{outfile}{ext}.xlsx") as writer:
         # read in the input file
-        infile = pandas.read_excel(infile, sheet_name=None)
+        infile = pandas.read_excel(infile, sheet_name=None, header=headerin)
         # for each sheet in the input file (probably only one for each in this case)
         for sname, s in infile.items():
             # if the sheet is not empty
             if not s.empty:
-                # store the original column names to be able to add them back in later
-                orig_columns = [col.strip() for col in s.columns]
+                if headerin:
+                    # store the original column names to be able to add them back in later
+                    orig_columns = [col.strip() for col in s.columns]
 
-                # standardise the names of the columns
-                s.rename(columns={colname: "seqid"}, inplace=True)
-                s.rename(columns={startname: "start"}, inplace=True)
-                s.rename(columns={endname: "end"}, inplace=True)
+                    # standardise the names of the columns
+                    s.rename(columns={colname: "seqid"}, inplace=True)
+                    s.rename(columns={startname: "start"}, inplace=True)
+                    s.rename(columns={endname: "end"}, inplace=True)
+                else:
+                    # rename the default index values to be the standard
+                    s.rename(columns={0: "seqid"}, inplace=True)
+                    s.rename(columns={1: "start"}, inplace=True)
+                    s.rename(columns={2: "end"}, inplace=True)
+                    s.rename(columns={3: "signal"}, inplace=True) # quite specific - may need commenting out
+
+                    if headerout:
+                        # flag no orig columns
+                        orig_columns = s.columns.tolist()
+                    else:
+                        orig_columns = None
 
                 # calculate the distance between the region and the nearest telomere
                 s = calculate_distances_to_centromeres_and_telomeres(s)
