@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 name = "genomic_features_annotation"
 version = "0.0.1"
 authors = [
-  { name="E Croot", email="croote@cardiff.ac.uk" },
+  { name="E Coral", email="croote@cardiff.ac.uk" },
 ]
 description = "A module for annotating bed-like genomic regions with features such as genes, repeats and fragile sites"
 readme = "README.md"
@@ -24,4 +24,8 @@ dependencies = [
     "pandas>=2.2.0"
 ]
 
+[tool.setuptools.packages.find]
+where = ["src"]
 
+[tool.setuptools.package-data]
+mypkg = ["ref_files/*"]
