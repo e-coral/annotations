@@ -55,6 +55,25 @@ chrY entries were checked and added manually
 
 and centromeres were extracted using get_centromeres.py
 
+@ the fragile sites file was generated manually, from two original files:
+
+    1. cytobands (chm13v2.0_cytobands_allchrs.bed) downloaded from: 
+        http://t2t.gi.ucsc.edu/chm13/hub/t2t-chm13-v2.0/download/chm13v2.0_cytobands_allchrs.bed.gz  (02/08/2023)
+    2. Fragile sites were downloaded from HGNC 
+        https://www.genenames.org/tools/search/#!/?query=&rows=20&start=0&filter=document_type:gene&filter=locus_type:%22Fragile%20site%22 (02/08/23), 
+        named hgnc_fragile_sites.txt. Cytoband information was extracted from the downloaded file names fields in this file using the short script 
+        get_bands_from_hgnc.py, and presented in an additional column in the file hgnc_bandnames.txt
+    3. The hgnc data (containing cytoband information) was joined with the HumCFS data (with FRA4E edited to be FRA4F, according to evidence 
+        given in changes_made_to_humcfs_downloads.ods) on fragile site symbol. For the 8 fragile sites that were only present in HumCFS (not HGNC), 
+        FRA2S, FRA2L, FRA5H, FRA6H, FRA7K, FRA9G, FRA13E and FRAXF, the HumCFS website 
+        (e.g. https://webs.iiitd.edu.in/raghava/humcfs/browse_sub1.php?token=FRA5H&col=2) was used to find the cytoband for the site. 
+        For FRA4F, this was added manually, with the cytoband 4q22, as detailed in literature. 
+    4. The fragile site and cytoband information was then joined to the cytoband bed file, using join_cytoband_bed_and_fragile_sites.py, resulting in 
+        sites_and_positions_first.tsv. However, there were some gaps where the cytoband positions didn’t exactly match. 
+        e.g. if the HumCFS data contains the position 1p36, but the cytoband data only contains information for the sections of the band (e.g. 1p36.11, 1p36.2 etc.), 
+        the join wouldn’t work and the row would be left blank. The positions for these 45 bands were then added in manually, taking the lower and upper boundaries 
+        of the relevant sections from the cytobands file.
+
 ########################################################################################################################
 In brief, the script gene_tel_distance performs the following:
 
