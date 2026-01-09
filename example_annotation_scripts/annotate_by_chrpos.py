@@ -1,3 +1,6 @@
+"""
+annotate regions that are in the format chr:start-end, held within multiple sheets of an excel file
+"""
 import os
 from pathlib import Path
 from src.annotate import annotate
