@@ -15,7 +15,7 @@ centromeres_file = 'centromeres.csv'
 ensembl_genes = 'ensembl_IDs_to_gene_names.csv'
 
 # for region annotations, in addition to genes_file above
-detailed_reps_file = 'chm13v2.0_rmsk.bed'
+detailed_reps_file = 'chm13v2.0_RepeatMasker_4.1.2p1.2022Apr14.bed'
 reps_file = 'censat.bed'
 fs_file = 'all_fragile_sites_positions.tsv'
 
@@ -366,7 +366,7 @@ def add_cent_positions(genes):
     """
     cents = get_centromere_positions()
     cents_added = pandas.merge(genes, cents, on=['seqid'], how='left')
-    # print(cents_added.columns)
+
     return cents_added
 
 
@@ -406,9 +406,14 @@ def find_reps_overlaps(chrom, pos, reps, reps_regions, reps_df, posend=None):
     if posend is None:
         posend = pos + 1
 
+    # the repeats use title case Chr, so ensure the source matches this format
+    chromkey = chrom.replace("Chr", "chr")
+    # print(chromkey)
+
     try:
         # use the ncls find_overlap method to check whether the var positions overlap with repeat regions
-        reps_overlaps = list(reps_regions[chrom].find_overlap(pos, posend))
+        reps_overlaps = list(reps_regions[chromkey].find_overlap(pos, posend))
+        # print(f"repeats found for {chrom}")
         # if there are any overlaps,
         # then for each overlap in the list, use the index of the region to identify the relevant annotation
         if reps_overlaps:
@@ -416,7 +421,7 @@ def find_reps_overlaps(chrom, pos, reps, reps_regions, reps_df, posend=None):
                 # use the index to find the relevant annotation(s), and add them to the list for the function
                 rep.append(reps_df.iloc[item[2]].repeats)
 
-    except KeyError:
+    except KeyError as err:
         print(f"No repeats annotations available for {chrom}.")
 
     # join the function list (even if empty) into a comma-separated string and add it to the annotations list
@@ -443,10 +448,12 @@ def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df, posend=None):
         posend = pos + 1
 
     # it won't work for chromosomes Y or M, because there are no data for those
-    if chrom not in ["chrM", "chrY"]:
+    if chrom.lower() not in ["chrm", "chry"]:
+        # ensure lowercase chr is used, as this is how the fragile sites are recorded
+        chromkey = chrom.replace("Chr", "chr")
         try:
             # use the ncls find_overlap method to check whether the var positions overlap with repeat regions
-            fs_overlaps = list(fs_regions[chrom].find_overlap(pos, posend))
+            fs_overlaps = list(fs_regions[chromkey].find_overlap(pos, posend))
             # if there are any overlaps,
             # then for each overlap in the list, use the index of the region to identify the relevant annotation
             if fs_overlaps:
@@ -487,8 +494,10 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
     if posend is None:
         posend = pos + 1
 
+    chromkey = chrom.replace("Chr", "chr")
+
     try:
-        genes_overlaps = list(gene_regions[chrom].find_overlap(pos, posend))
+        genes_overlaps = list(gene_regions[chromkey].find_overlap(pos, posend))
         if genes_overlaps:
             for item in genes_overlaps:
                 relevant_data = gene_df.iloc[item[2]]
@@ -552,7 +561,7 @@ def add_annotation_column(df, data_list, column_name):
     return df
 
 
-def format_output_columns(df, orig_col_names):
+def format_output_columns(df, orig_col_names, rmsk=False):
     """
     For the eventual output, drop irrelevant columns from the dataframe, and rename others to original names
     :param df: dataframe of input values and annotations
@@ -560,15 +569,17 @@ def format_output_columns(df, orig_col_names):
     :return: formatted dataframe of values and annotations
     """
     if orig_col_names:
+        if rmsk:
         # add the names of the new columns to the names of the original columns
-        # for col in ['gene chrom', 'gene start', 'gene end', 'tChr', 'tStart', 'tEnd', 'Centromere',
-        #             'region-telomere_distance', 'repeats', 'fragile_sites',
-        #             'genes', 'gene_lengths', 'g-t_distance', 'gene_positions']:
-        for col in ['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance',
-                    'censat_repeats', 'rmsk_repeats', 'fragile_sites', 'genes', 'gene_lengths', 'gene-telomere_distances',
-                    'gene_positions']:
-            orig_col_names.append(col)
-
+            for col in ['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance',
+                        'censat_repeats', 'rmsk_repeats', 'fragile_sites', 'genes', 'gene_lengths', 'gene-telomere_distances',
+                        'gene_positions']:
+                orig_col_names.append(col)
+        else:
+            for col in ['tChr', 'tStart', 'tEnd', 'censtart', 'Centromere', 'cenend', 'reg-tel_distance', 'reg-cen_distance',
+                        'censat_repeats', 'fragile_sites', 'genes', 'gene_lengths', 'gene-telomere_distances',
+                        'gene_positions']:
+                orig_col_names.append(col)
         # rename the columns accordingly
         df.columns = orig_col_names
         # drop the telomere and centromere columns that aren't needed in the final output
@@ -618,7 +629,7 @@ def find_overlapping_features(regions, rep_regions, rep_df, d_rep_regions, d_rep
     :param regions: dict of the df split by chromosome
     :param rep_regions: repeats regions NCLS
     :param rep_df: df of rep regions
-    :param d_rep_regions: df of repeatmasker rep regions
+    :param d_rep_regions: repeatmasker rep regions NCLS
     :param d_rep_df: df of repeatmasker rep regions
     :param gene_regions: gene regions NCLS
     :param gene_df: df of gene regions
@@ -642,16 +653,17 @@ def find_overlapping_features(regions, rep_regions, rep_df, d_rep_regions, d_rep
             # get the start and end positions for the region
             start_pos = int(r['start'])
             end_pos = int(r['end'])
-            # print(start_pos, end_pos)
             repeats = find_reps_overlaps(chrom, start_pos, repeats, rep_regions, rep_df, posend=end_pos)
-            d_repeats = find_reps_overlaps(chrom, start_pos, d_repeats, d_rep_regions, d_rep_df, posend=end_pos)
+            if d_rep_regions:
+                d_repeats = find_reps_overlaps(chrom, start_pos, d_repeats, d_rep_regions, d_rep_df, posend=end_pos)
             f_sites = find_fs_overlaps(chrom, start_pos, f_sites, fs_regions, fs_df, posend=end_pos)
             genes, gene_lengths, gtd, gcd, gene_positions = find_gene_overlaps(chrom, start_pos, genes, gene_regions,
                                                                                gene_df, gene_lengths, gtd, gcd,
                                                                                gene_positions, posend=end_pos)
 
         v = add_annotation_column(v, repeats, "censat_repeats")
-        v = add_annotation_column(v, d_repeats, "rmsk_repeats")
+        if d_rep_regions:
+            v = add_annotation_column(v, d_repeats, "rmsk_repeats")
         v = add_annotation_column(v, f_sites, "fragile_sites")
         v = add_annotation_column(v, genes, "genes")
         v = add_annotation_column(v, gene_lengths, "gene_lengths")
@@ -765,22 +777,32 @@ def make_annotation_ncls(reps_df, detailed_reps_df, genes_df, fs_df):
     return reps_regions, detailed_reps_regions, genes_regions, fs_regions
 
 
-def annotate_overlaps(df):
+def annotate_overlaps(df, rmsk=False):
     """
     find all the overlaps between the regions of interest and features of interest
     :param df: df derived from input
+    :param bool rmsk: whether to use rmsk or not
     :return: same df containing annotations
     """
     reps_df = get_reps_df(reps_file)
-    d_reps_df = get_reps_df(detailed_reps_file)
     genes_df = get_genes_df()
     fs_df = get_fs_df()
 
     # create the NCLSs for the repeats, genes and fragile sites
-    reps_regions, d_reps_regions, genes_regions, fs_regions = make_annotation_ncls(reps_df, d_reps_df, genes_df, fs_df)
+    reps_regions = get_annotation_regions(reps_df)
+    genes_regions = get_annotation_regions(genes_df)
+    fs_regions = get_annotation_regions(fs_df)
 
     # split the regions to be annotated by chr
     regions = get_regions_per_chr(df)
+
+    # create the NCLS for rmsk repeats, if requested
+    if rmsk:
+        d_reps_df = get_reps_df(detailed_reps_file)
+        d_reps_regions = get_annotation_regions(d_reps_df)
+    else:
+        d_reps_df = None
+        d_reps_regions = None
 
     # find the overlaps between the features (NCLSs) and regions (list of dfs) to perform annotations
     anns = find_overlapping_features(regions, reps_regions, reps_df, d_reps_regions, d_reps_df, genes_regions,
@@ -950,12 +972,13 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", startna
                     final.to_csv(f"{outfile}_{sname}{ext}.csv", index=False)
 
 
-def annotate_gene_location_data(infile, outfile, colname):
+def annotate_gene_location_data(infile, outfile, colname, rmsk=False):
     """
     read in a file containing chr:start-end formatted data, annotate it, and write the annotations to an output file
     :param infile: full path to input file
     :param outfile: full path to output file
     :param str colname: name of column containing the relevant data
+    :param rmsk: whether to add rmsk annotations
     :return:
     """
     # create the output file
@@ -977,7 +1000,7 @@ def annotate_gene_location_data(infile, outfile, colname):
                 res = calculate_distances_to_centromeres_and_telomeres(res)
 
                 # annotate the genes, fragile sites, repeats and gene sizes
-                regions_df = annotate_overlaps(res)
+                regions_df = annotate_overlaps(res, rmsk)
 
                 # reformat the final df to match the input
                 final = format_output_columns(regions_df, orig_columns)
