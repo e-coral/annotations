@@ -966,17 +966,15 @@ def annotate_gene_location_data(infile, outfile, colname):
         for sname, s in infile.items():
             # if the sheet is not empty
             if not s.empty:
-                # store the original column names to be able to add them back in later
-                orig_columns = [col.strip() for col in s.columns]
-
                 # convert the positions into separate columns for compatibility with the rest of the pipeline
                 res = get_separate_chr_pos(s, colname)
                 # res.to_csv(os.path.join(outdir, csvoutname), sep='\t', index=False)
-                # add the relevant annotations
+
+                # store the original column names, plus the column names for new chr pos columns above
+                orig_columns = [col.strip() for col in res.columns]
 
                 # calculate the distance between the region and the nearest telomere
                 res = calculate_distances_to_centromeres_and_telomeres(res)
-                # print(res.head())
 
                 # annotate the genes, fragile sites, repeats and gene sizes
                 regions_df = annotate_overlaps(res)
