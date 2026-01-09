@@ -1,6 +1,7 @@
-# for region boundary files in the format:
+# for csv-format region boundary files, with the columns:
 # chr A, pos A, chr B, pos B
 # annotate the positions at both boundaries
+# and output each as an excel file
 
 import os
 from pathlib import Path
@@ -14,14 +15,14 @@ indir = (Path(__file__).parent.parent / 'example_input_files').resolve()
 
 def annotate_results():
     """
-    read in the file, add the annotations, and output the annotated file
+    read in the file, add the annotations, and output annotated excel files
     :return: annotated file
     """
     # for all the input files
     for filename in indir.glob(r'example_bed-like*'):
         # generate the relevant output file name
-        a_outname = f"posA_basic_annotated_{filename.stem}.xlsx"
-        b_outname = f"posB_basic_annotated_{filename.stem}.xlsx"
+        a_outname = f"posA_annotated_{filename.stem}.xlsx"
+        b_outname = f"posB_annotated_{filename.stem}.xlsx"
         # print(filename)
 
         # read in the input file
