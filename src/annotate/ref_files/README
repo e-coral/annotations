@@ -42,6 +42,9 @@ and bedtools merge was used to generate single centromere regions for each chr
 # bedtools merge -i chm13v2.0_censat_v2.0.bed > censat_merged.bed
 chrY entries were checked and added manually
 
+@ the repeatmasker file was re-downloaded on 9 Jan 2026, from the T2T github,
+ https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/annotation/chm13v2.0_RepeatMasker_4.1.2p1.2022Apr14.bed
+
 @ the ideogram file was downloaded from the UCSC Table Browser (24th Jan 2024) to cytobands.tsv, using the settings:
 
     assembly: T2T/hs1
