@@ -1,6 +1,6 @@
-# Emmon Croot 2024
+# Emmon Coral 2026
 
-The files in this directory are some of those used to annotate various bed-like formats of input file with various
-required annotations, with output columns as requested for various purposes.
-They may be used directly for other annotations where appropriate, but are more likely to be used as a basis for new
-scripts handling slightly different input and/or output columns.
+This directory contains small scripts used to annotate various formats of input data (e.g. different file types, different information),
+with various annotations.
+These scripts may be used directly for annotating data where appropriate, but are more likely to be used as a basis to create new
+scripts handling slightly different inputs.
