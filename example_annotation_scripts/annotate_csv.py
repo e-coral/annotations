@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from src.annotate import annotate
-import pandas
 
 
 outdir = (Path(__file__).parent.parent / 'example_output_files').resolve()
@@ -14,7 +13,7 @@ def annotate_standard_csv():
     :return: annotated file
     """
     # for whichever input csv files you want to annotate
-    for filename in indir.glob('*standard.csv'):
+    for filename in indir.glob('example.csv'):
         # generate the relevant output file names and paths
         outname = f"annotated_{filename.stem}"
         infile = os.path.join(indir, filename)
@@ -22,8 +21,6 @@ def annotate_standard_csv():
 
         # annotate the input csv and output it to csv
         annotate.annotate_standard_csv_input_file(infile, outfile, colname="seqnames", explode=False)
-
-
 
 if __name__ == '__main__':
     annotate_standard_csv()
