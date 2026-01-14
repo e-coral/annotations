@@ -1255,7 +1255,7 @@ def split_multiple_genes(ann_df):
     :param ann_df: the dataframe containing all relevant annotations
     :return: edited df
     """
-    to_explode = ['genes', 'gene_lengths', 'gene-telomere_distances', 'gene-centromere_distances', 'gene_positions']
+    to_explode = ['genes', 'gene_lengths', 'gene-telomere_distances', 'gene_positions']
     for heading in to_explode:
         ann_df[heading] = ann_df[heading].str.split(', ')
     ann_df = ann_df.explode(to_explode)
