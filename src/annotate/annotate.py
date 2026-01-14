@@ -921,12 +921,12 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", startna
     else:
         ext = ""
 
-    headerin = 0 if headerin else None
+    header_row = 0 if headerin else None
 
     # create the output file
     with pandas.ExcelWriter(f"{outfile}{ext}.xlsx") as writer:
         # read in the input file
-        infile = pandas.read_excel(infile, sheet_name=None, header=headerin)
+        infile = pandas.read_excel(infile, sheet_name=None, header=header_row)
         # for each sheet in the input file (probably only one for each in this case)
         for sname, s in infile.items():
             # if the sheet is not empty
@@ -934,7 +934,6 @@ def annotate_standard_excel_input_file(infile, outfile, colname="chrom", startna
                 if headerin:
                     # store the original column names to be able to add them back in later
                     orig_columns = [col.strip() for col in s.columns]
-
                     # standardise the names of the columns
                     s.rename(columns={colname: "seqid"}, inplace=True)
                     s.rename(columns={startname: "start"}, inplace=True)
