@@ -7,13 +7,13 @@ outdir = (Path(__file__).parent.parent / 'example_output_files').resolve()
 indir = (Path(__file__).parent.parent / 'example_input_files').resolve()
 
 
-def annotate_captureC_spreadsheet():
+def annotate_spreadsheet():
     """
-    For all the captureC spreadsheets, read in the data, annotate it, and return the annotated file
+    read in the data, annotate it, and return the annotated file
     :return: annotated version of the input file
     """
     # for all the input files
-    for filename in indir.glob(r'*CaC*.xlsx'):
+    for filename in indir.glob(r'*CaC.xlsx'):
         # generate the relevant output file names and paths
         outname = f"annotated_{filename.stem}"
         infile = os.path.join(indir, filename)
@@ -25,4 +25,4 @@ def annotate_captureC_spreadsheet():
 
 
 if __name__ == '__main__':
-    annotate_captureC_spreadsheet()
+    annotate_spreadsheet()
