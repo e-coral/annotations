@@ -26,16 +26,16 @@ def annotate_results():
         # print(filename)
 
         # read in the input file
-        dysgu_df = pandas.read_csv(filename, sep="\t", header=0)
+        in_df = pandas.read_csv(filename, sep="\t", header=0)
 
         # if there are data in the file
-        if not dysgu_df.empty:
+        if not in_df.empty:
             # rename the columns to use the A boundary for analysis, and add an 'end' column for compatibility
-            dysgu_df.columns = ['seqid', 'start', 'chrB', 'posB']
-            dysgu_df['end'] = dysgu_df['start'] + 1
+            in_df.columns = ['seqid', 'start', 'chrB', 'posB']
+            in_df['end'] = in_df['start'] + 1
 
             # annotate A positions
-            dysgu_data = annotate.calculate_distances_to_centromeres_and_telomeres(dysgu_df)
+            dysgu_data = annotate.calculate_distances_to_centromeres_and_telomeres(in_df)
             res = annotate.annotate_overlaps(dysgu_data)
 
             # reformat the final df to match the input
@@ -47,12 +47,12 @@ def annotate_results():
                 a_final.to_excel(writer, index=False)
 
             # rename columns to use chr, start and end for the B positions
-            dysgu_df.columns = ['chrA', 'posA', 'seqid', 'end', 'start']
+            in_df.columns = ['chrA', 'posA', 'seqid', 'end', 'start']
             # create start positions for compatibility with modules
-            dysgu_df['start'] = dysgu_df['end'] - 1
+            in_df['start'] = in_df['end'] - 1
 
             # annotate
-            dysgu_data = annotate.calculate_distances_to_centromeres_and_telomeres(dysgu_df)
+            dysgu_data = annotate.calculate_distances_to_centromeres_and_telomeres(in_df)
             res = annotate.annotate_overlaps(dysgu_data)
 
             # reformat the final df to match the input
