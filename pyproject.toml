@@ -9,7 +9,7 @@ version = "0.0.1"
 authors = [
   { name="E Coral", email="croote@cardiff.ac.uk" },
 ]
-description = "A module for annotating bed-like genomic regions with features such as genes, repeats and fragile sites"
+description = "A module for annotating genomic regions with features such as genes, repeats and fragile sites"
 readme = "README.md"
 requires-python = ">=3.7"
 classifiers = [
@@ -18,7 +18,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "biomart>=0.9.2",
+    #"biomart>=0.9.2",
     "ncls>=0.0.68",
     "numpy>=1.26.3",
     "pandas>=2.2.0"
