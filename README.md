@@ -8,7 +8,7 @@ Package for annotating various BED-like formats of genomic regions of interest, 
 * Distance between region and telomere
 
 <h2>Disclaimer</h2>
-This is an in-progress project, developed for the annotation of many different input types, with various features of interest within our lab. It is not currently well standardised, fully comprehensive, or available through pypi/in a packaged format. Questions about using any part of this project are welcome, however, there are no guarantees it can/will work for all purposes.
+This is an in-progress project, developed to accept many different input types, and annotate genomic loci with various features of interest within our lab. It is not currently well standardised, fully comprehensive, or available through pypi/in a packaged format. Questions about using any part of this project are welcome, via the issues/discussion features on this page, as appropriate. However, there are no guarantees this can or will work for all annotation purposes.
 
 [//]: # (<h2>Installation</h2>)
 
