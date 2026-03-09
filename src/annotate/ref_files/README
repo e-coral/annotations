@@ -13,7 +13,7 @@ originally for eccDNA annotations. get_just_genes.py was run to keep only genes 
 of the file to be more manageable for these analyses)
 
 @ The secondary genes file /ref_files/CAT_liftoff_from_table_browser.csv was downloaded from the UCSC table browser on
-Jan15th, using the following settings:
+2024-01-15, using the following settings:
 
     assembly: T2T/hs1
     group: genes and gene predictions
