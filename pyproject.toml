@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "genomic_features_annotation"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
-  { name="E Coral", email="croote@cardiff.ac.uk" },
+  { name="E Coral", email="corale@cardiff.ac.uk" },
 ]
 description = "A module for annotating genomic regions with features such as genes, repeats and fragile sites"
 readme = "README.md"

@@ -118,10 +118,16 @@ def get_genes_df():
     read the genes file into a relevant df
     :return: df of gene annotations
     """
-    genes_df = pandas.read_csv(os.path.join(refs_dir, genes_file))
+    # get the genes info from the two sources
+    genes_df = get_gene_annotations()
+
+    # calculate the lengths of the genes
     genes_df = calculate_gene_lengths(genes_df)
+
+    # calculate the distances between the genes and centromere/telomere
     genes_df = calculate_distances_to_centromeres_and_telomeres(genes_df, keep_int=True, isgene=True)
 
+    # convert the data type to string, for printing
     return genes_df.astype({'gene_length': str, 'g-t_distance': str})
 
 
@@ -498,41 +504,38 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
 
     try:
         genes_overlaps = list(gene_regions[chromkey].find_overlap(pos, posend))
+        # if there are any genes overlapping with the input region
         if genes_overlaps:
+            # for each gene
             for item in genes_overlaps:
+                # fetch the data
                 relevant_data = gene_df.iloc[item[2]]
 
-                # if the type of the annotation is a gene, then get the gene name and size
-                if relevant_data.type == "gene":
-                    gene_length.append(relevant_data.gene_length)
-                    gtd.append(relevant_data["g-t_distance"])
-                    gcd.append(relevant_data["g-c_distance"])
-                    gene_pos.append(f"{relevant_data['seqid']}:{relevant_data['start']}-{relevant_data['end']}")
-                    # extract the gene name from the attributes field
-                    atts = relevant_data["attributes"]
-                    # print(atts)
-                    if match := re.search(r'.*;gene_name=(.*?);.*', atts):
-                        # print(atts)
-                        # print(match.group(1))
-                        gene_name.append(match.group(1))
-                    else:
-                        gene_name.append("")
+                # collect the distances, size and name for the gene that overlaps with the region
+                gene_length.append(relevant_data.gene_length)
+                gtd.append(relevant_data["g-t_distance"])
+                gcd.append(relevant_data["g-c_distance"])
+                gene_pos.append(f"{relevant_data['seqid']}:{relevant_data['start']}-{relevant_data['end']}")
+                gene_name.append(relevant_data["gene_name"])
 
+    # if the chromosome is not available for the genes annotations, print a warning
     except KeyError as err:
         print(f"{err}\nNo gene annotations available for {chrom}:{pos}-{posend}.")
 
+    # collapse the lists of gene info, and append them to the relevant running lists of data to be output
     gene_sizes.append(", ".join(gene_length))
     gene_names.append(", ".join(gene_name))
+    gene_positions.append(", ".join(gene_pos))
     gtds.append(", ".join(gtd))
+
+    # hack to deal with chromosomes that don't have centromeres
     try:
         gcds.append(", ".join(gcd))
     except TypeError:
-        # hack to deal with chromosomes that don't have centromeres
         gcd_strings = [str(i) for i in gcd]
         gcds.append(", ".join(gcd_strings))
 
-    gene_positions.append(", ".join(gene_pos))
-
+    # return the running lists
     return gene_names, gene_sizes, gtds, gcds, gene_positions
 
 
