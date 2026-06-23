@@ -411,7 +411,6 @@ def find_reps_overlaps(chrom, pos, reps, reps_regions, reps_df, posend=None):
     rep = []
     if posend is None:
         posend = pos + 1
-
     # the repeats use title case Chr, so ensure the source matches this format
     chromkey = chrom.replace("Chr", "chr")
     # print(chromkey)
@@ -425,7 +424,7 @@ def find_reps_overlaps(chrom, pos, reps, reps_regions, reps_df, posend=None):
         if reps_overlaps:
             for item in reps_overlaps:  # usually only 1 pos-annotation overlap, but it's possible for more
                 # use the index to find the relevant annotation(s), and add them to the list for the function
-                rep.append(reps_df.iloc[item[2]].repeats)
+                rep.append(reps_df.loc[item[2]].repeats)
 
     except KeyError as err:
         print(f"No repeats annotations available for {chrom}.")
@@ -458,14 +457,14 @@ def find_fs_overlaps(chrom, pos, f_sites, fs_regions, fs_df, posend=None):
         # ensure lowercase chr is used, as this is how the fragile sites are recorded
         chromkey = chrom.replace("Chr", "chr")
         try:
-            # use the ncls find_overlap method to check whether the var positions overlap with repeat regions
+            # use the ncls find_overlap method to check whether the var positions overlap with fragile site regions
             fs_overlaps = list(fs_regions[chromkey].find_overlap(pos, posend))
             # if there are any overlaps,
             # then for each overlap in the list, use the index of the region to identify the relevant annotation
             if fs_overlaps:
                 for item in fs_overlaps:  # usually only 1 pos-annotation overlap, but it's possible for more
                     # use the index to find the relevant annotation(s), and add them to the list for the function
-                    fs.append(fs_df.iloc[item[2]].fragile_site)
+                    fs.append(fs_df.loc[item[2]].fragile_site)
 
         except KeyError:
             print(f"No fragile sites annotations available for {chrom}:{pos}-{posend}.")
@@ -506,10 +505,13 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
         genes_overlaps = list(gene_regions[chromkey].find_overlap(pos, posend))
         # if there are any genes overlapping with the input region
         if genes_overlaps:
+            # print(chromkey, pos, posend)
+            # print(genes_overlaps)
             # for each gene
             for item in genes_overlaps:
                 # fetch the data
-                relevant_data = gene_df.iloc[item[2]]
+                relevant_data = gene_df.loc[item[2]]
+                # print(relevant_data)
 
                 # collect the distances, size and name for the gene that overlaps with the region
                 gene_length.append(relevant_data.gene_length)
@@ -517,6 +519,8 @@ def find_gene_overlaps(chrom, pos, gene_names, gene_regions, gene_df, gene_sizes
                 gcd.append(relevant_data["g-c_distance"])
                 gene_pos.append(f"{relevant_data['seqid']}:{relevant_data['start']}-{relevant_data['end']}")
                 gene_name.append(relevant_data["gene_name"])
+                # print(f"{relevant_data['seqid']}:{relevant_data['start']}-{relevant_data['end']}")
+            # exit()
 
     # if the chromosome is not available for the genes annotations, print a warning
     except KeyError as err:
@@ -744,7 +748,7 @@ def annotate_existing_genes(df, column_name):
     return trimmed_df
 
 
-def get_annotation_regions(df):
+def get_annotation_regions(df, p=False):
     """
     get the NCLS for the regions provided in the annotations resources
     :param pandas.DataFrame df: annotation data df
@@ -758,6 +762,11 @@ def get_annotation_regions(df):
 
     # add the regions to the regions dict
     for k, v in grouped_df.items():
+        # if p:
+        #     # print(v.start)
+        #     # print(v.index.values)
+        #     if 61380 in v.index.values:
+        #         print(v.loc[61380])
         regions[k] = NCLS(v.start.values, v.end.values, v.index.values)
 
     return regions
@@ -793,6 +802,7 @@ def annotate_overlaps(df, rmsk=False):
 
     # create the NCLSs for the repeats, genes and fragile sites
     reps_regions = get_annotation_regions(reps_df)
+    # genes_regions = get_annotation_regions(genes_df, p=True)
     genes_regions = get_annotation_regions(genes_df)
     fs_regions = get_annotation_regions(fs_df)
 
